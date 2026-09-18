@@ -274,7 +274,8 @@ def parse_args() -> argparse.Namespace:
         "--doc",
         help="Path to a .aidoc document to open before chatting (passed to MCP server).",
     )
-    p.add_argument("--prompt", required=True, help="User prompt")
+    p.add_argument("--prompt", required=False, default="",
+                        help="User prompt (required for one-shot, ignored in --daemon)")
     p.add_argument(
         "--api-key",
         default=os.environ.get("OPENAI_API_KEY"),
@@ -303,11 +304,97 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="JSON array of {role, content} prior turns to prepend before the prompt",
     )
+    p.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run as a long-lived daemon: read JSON requests from stdin, "
+             "write JSON responses to stdout. Keeps the MCP connection open.",
+    )
     return p.parse_args()
+
+
+def run_daemon(bin_cmd: list[str]) -> int:
+    """Long-lived mode: read JSON requests from stdin, write JSON responses
+    to stdout, keep the MCP connection open across requests.
+
+    NOTE (2026-09-18): the Windows pipe path is flaky — the daemon starts
+    correctly and prints a ready signal, but subsequent stdin writes from
+    the parent arrive as zero bytes regardless of text/binary mode or
+    buffering tweaks. The CLI single-shot mode (the rest of this file) is
+    what powers the Tauri AI chat for now. The daemon scaffolding stays
+    in place for Linux / macOS and for a future switch to a higher-level
+    transport (Unix socket / named pipe).
+    """
+    print("[daemon] --daemon is currently disabled on this platform",
+          file=sys.stderr, flush=True)
+    print("[daemon] falling back to one-shot: spawn the agent per request",
+          file=sys.stderr, flush=True)
+    return main()
+
+
+def _run_with_tools(
+    mcp: MCPClient,
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    system: str,
+    history: list[dict],
+    tools: list[dict],
+    max_steps: int = 6,
+) -> str:
+    messages: list[dict] = []
+    messages.append({"role": "system", "content": system})
+    if history:
+        for turn in history:
+            role = turn.get("role")
+            content = turn.get("content")
+            if role in ("user", "assistant") and isinstance(content, str):
+                messages.append({"role": role, "content": content[:4000]})
+    messages.append({"role": "user", "content": prompt})
+    with httpx.Client() as client:
+        for step in range(max_steps):
+            print(f"[daemon] step {step + 1}/{max_steps}", file=sys.stderr)
+            resp = chat_completion(client, base_url, api_key, model, messages, tools)
+            choice = resp["choices"][0]
+            msg = choice["message"]
+            messages.append(msg)
+            tool_calls = msg.get("tool_calls") or []
+            if not tool_calls:
+                return msg.get("content", "")
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                name = fn.get("name", "")
+                raw_args = fn.get("arguments", "{}")
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                except json.JSONDecodeError:
+                    args = {}
+                print(f"[daemon] tool call: {name}({args})", file=sys.stderr)
+                try:
+                    output = call_tool(mcp, name, args)
+                except Exception as exc:  # noqa: BLE001
+                    output = f"tool error: {exc}"
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "content": output[:8000],
+                    }
+                )
+    return messages[-1].get("content", "(no final answer)")
 
 
 def main() -> int:
     args = parse_args()
+    if args.daemon:
+        if not args.api_key:
+            # daemon tolerates missing api_key per-request; only env matters.
+            pass
+        bin_cmd = args.mcp_bin.split()
+        print(f"[daemon] spawning: {bin_cmd}", file=sys.stderr)
+        return run_daemon(bin_cmd)
+
     if not args.api_key:
         print(
             "error: OPENAI_API_KEY not set. Pass --api-key or export OPENAI_API_KEY.",
