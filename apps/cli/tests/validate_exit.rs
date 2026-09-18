@@ -89,7 +89,7 @@ fn validate_exits_nonzero_on_errors() {
         out.status
     );
     let code = out.status.code().unwrap_or(0);
-    assert!(code >= 1 && code <= 125, "exit code out of range: {code}");
+    assert!((1..=125).contains(&code), "exit code out of range: {code}");
     assert!(
         stdout.contains("identity"),
         "expected identity validator to fire, got stdout: {stdout}"
