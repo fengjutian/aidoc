@@ -12,7 +12,18 @@ use std::fmt::Write as _;
 
 use aidoc_model::{Document, Node, NodeKind, Relation};
 
-pub fn render_html(doc: &Document, nodes: &[Node], relations: &[Relation]) -> String {
+/// Render an AIDoc document to HTML.
+///
+/// `branch` is the label of the branch the rendered revision belongs to
+/// (e.g. "ai-draft"). When `Some`, a small `<aside class="aidoc-branch">`
+/// banner is inserted above the document body. When `None`, no banner is
+/// shown — the document is treated as on main.
+pub fn render_html(
+    doc: &Document,
+    nodes: &[Node],
+    relations: &[Relation],
+    branch: Option<&str>,
+) -> String {
     let mut out = String::new();
     out.push_str("<!DOCTYPE html>\n<html>\n<head>\n");
     let _ = write!(
@@ -21,9 +32,22 @@ pub fn render_html(doc: &Document, nodes: &[Node], relations: &[Relation]) -> St
         escape(&doc.title)
     );
     out.push_str(
-        "  <style>.aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em}</style>\n",
+        "  <style>\
+         .aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em}\
+         .aidoc-branch{background:#eef;border-left:4px solid #88c;\
+                       padding:.5em 1em;margin:0 0 1em 0;font-family:monospace}\
+         .aidoc-branch::before{content:\"branch: \"}\
+         </style>\n",
     );
     out.push_str("</head>\n<body>\n");
+
+    if let Some(b) = branch {
+        let _ = write!(
+            out,
+            "<aside class=\"aidoc-branch\">{}</aside>\n",
+            escape(b)
+        );
+    }
 
     let by_parent = group_by_parent(nodes);
     if let Some(root) = by_parent.get(&None) {

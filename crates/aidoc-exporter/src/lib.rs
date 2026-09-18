@@ -5,8 +5,8 @@ use std::fmt::Write as _;
 
 use aidoc_model::{Document, Node, NodeKind};
 
-pub fn export_html(doc: &Document, nodes: &[Node]) -> String {
-    aidoc_renderer::render_html(doc, nodes, &[])
+pub fn export_html(doc: &Document, nodes: &[Node], branch: Option<&str>) -> String {
+    aidoc_renderer::render_html(doc, nodes, &[], branch)
 }
 
 pub fn export_markdown(doc: &Document, nodes: &[Node]) -> String {

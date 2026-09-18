@@ -270,6 +270,42 @@ async fn mcp_handshake_and_init_aidoc() {
         "merge errored: {merge_call:?}"
     );
 
+    // 7. tools/call history --branch=ai-draft — should return one entry
+    //    (the R001 branch revision) and that entry should carry branch="ai-draft".
+    send(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "history",
+                "arguments": {"branch": "ai-draft"}
+            }
+        }),
+    )
+    .await;
+    let hist_call = recv(&mut stdout).await;
+    assert!(
+        hist_call["error"].is_null(),
+        "history errored: {hist_call:?}"
+    );
+    let hist_blob = hist_call["result"]["content"]
+        .as_array()
+        .expect("content array")
+        .iter()
+        .filter_map(|c| c["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        hist_blob.contains("ai-draft"),
+        "history response missing branch label: {hist_blob}"
+    );
+    assert!(
+        hist_blob.contains("\"id\":\"R001\""),
+        "history --branch response missing R001: {hist_blob}"
+    );
+
     drop(stdin);
     let _ = child.wait().await;
     let _ = std::fs::remove_dir_all(&pkg_path);

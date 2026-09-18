@@ -67,6 +67,9 @@ enum Cmd {
         path: String,
         #[arg(long)]
         json: bool,
+        /// Filter to a named branch (R### revisions on that branch only).
+        #[arg(long)]
+        branch: Option<String>,
     },
 
     /// Show a diff between two revisions (R### IDs).
@@ -80,6 +83,10 @@ enum Cmd {
         /// Target revision (R###). Defaults to the current head.
         #[arg(default_value = None)]
         to: Option<String>,
+        /// Restrict both `from` and `to` to revisions on this named branch.
+        /// When set, `from` defaults to the previous revision on the branch.
+        #[arg(long)]
+        branch: Option<String>,
     },
 
     /// Revert to a previous revision (always creates a new revision).
@@ -180,8 +187,15 @@ fn main() -> Result<()> {
             op_file,
             print_revision,
         } => commands::apply::run(&path, op_file.as_deref(), print_revision),
-        Cmd::History { path, json } => commands::history::run(&path, json),
-        Cmd::Diff { path, from, to } => commands::diff::run(&path, from.as_deref(), to.as_deref()),
+        Cmd::History { path, json, branch } => {
+            commands::history::run(&path, json, branch.as_deref())
+        }
+        Cmd::Diff {
+            path,
+            from,
+            to,
+            branch,
+        } => commands::diff::run(&path, from.as_deref(), to.as_deref(), branch.as_deref()),
         Cmd::Revert {
             path,
             target,

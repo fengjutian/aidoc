@@ -12,7 +12,7 @@ use crate::session::Session;
 /// never compare against the live `nodes` table directly so the output
 /// reflects what the document *was* at that revision, even after subsequent
 /// edits have rolled it forward.
-pub fn run(path: &str, from: Option<&str>, to: Option<&str>) -> Result<()> {
+pub fn run(path: &str, from: Option<&str>, to: Option<&str>, branch: Option<&str>) -> Result<()> {
     let s = Session::open(path)?;
     let doc_id = s
         .package
@@ -23,12 +23,24 @@ pub fn run(path: &str, from: Option<&str>, to: Option<&str>) -> Result<()> {
         .id
         .clone();
 
-    let head = crud::head_revision(s.store.conn(), &doc_id)?
-        .ok_or_else(|| anyhow::anyhow!("no head revision"))?;
-    let to_rev = to.unwrap_or(&head).to_string();
+    let to_rev = match to {
+        Some(t) => t.to_string(),
+        None => match branch {
+            // When scoping to a branch, "head" means the latest revision on that branch.
+            Some(name) => crud::list_revisions_by_branch(s.store.conn(), &doc_id, name)?
+                .last()
+                .map(|r| r.id.as_str().to_string())
+                .ok_or_else(|| anyhow::anyhow!("no revisions on branch {name}"))?,
+            None => crud::head_revision(s.store.conn(), &doc_id)?
+                .ok_or_else(|| anyhow::anyhow!("no head revision"))?,
+        },
+    };
     let from_rev = match from {
         Some(f) => f.to_string(),
-        None => default_from_rev(&s, &doc_id, &to_rev)?,
+        None => match branch {
+            Some(name) => default_branch_from_rev(&s, &doc_id, name, &to_rev)?,
+            None => default_from_rev(&s, &doc_id, &to_rev)?,
+        },
     };
 
     let from_nodes = crud::load_snapshot(s.store.conn(), &doc_id, &from_rev)
@@ -38,7 +50,8 @@ pub fn run(path: &str, from: Option<&str>, to: Option<&str>) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("load snapshot {to_rev}: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("no snapshot for {to_rev}"))?;
 
-    println!("diff {from_rev} -> {to_rev} (head={head})");
+    let scope = branch.map(|b| format!(" branch={b}")).unwrap_or_default();
+    println!("diff {from_rev} -> {to_rev}{scope}");
 
     let from_map: std::collections::HashMap<&str, &str> = from_nodes
         .iter()
@@ -113,6 +126,28 @@ fn default_from_rev(s: &Session, doc_id: &str, to_rev: &str) -> Result<String> {
         .iter()
         .position(|r| r == to_rev)
         .ok_or_else(|| anyhow::anyhow!("revision {to_rev} not found"))?;
+    if pos == 0 {
+        Ok(revs[0].clone())
+    } else {
+        Ok(revs[pos - 1].clone())
+    }
+}
+
+/// Like `default_from_rev` but restricted to revisions on `branch`.
+fn default_branch_from_rev(
+    s: &Session,
+    doc_id: &str,
+    branch: &str,
+    to_rev: &str,
+) -> Result<String> {
+    let revs = crud::list_revisions_by_branch(s.store.conn(), doc_id, branch)?
+        .into_iter()
+        .map(|r| r.id.as_str().to_string())
+        .collect::<Vec<_>>();
+    let pos = revs
+        .iter()
+        .position(|r| r == to_rev)
+        .ok_or_else(|| anyhow::anyhow!("revision {to_rev} not on branch {branch}"))?;
     if pos == 0 {
         Ok(revs[0].clone())
     } else {

@@ -113,7 +113,7 @@ pub fn run(path: &str, export_html: Option<&str>) -> Result<()> {
         let doc = crud::get_document(s2.store.conn(), doc_id)?
             .ok_or_else(|| anyhow::anyhow!("doc missing"))?;
         let nodes = crud::list_nodes(s2.store.conn(), doc_id)?;
-        let html = aidoc::exporter::export_html(&doc, &nodes);
+        let html = aidoc::exporter::export_html(&doc, &nodes, None);
         std::fs::write(html_out, html)?;
         println!("exported HTML → {html_out}");
     }

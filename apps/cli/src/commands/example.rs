@@ -207,7 +207,7 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
             .ok_or_else(|| anyhow::anyhow!("doc missing"))?;
         let all_nodes = aidoc::storage::crud::list_nodes(s2.store.conn(), &doc_id)
             .map_err(|e| anyhow::anyhow!("list nodes: {e}"))?;
-        let html = aidoc::exporter::export_html(&doc, &all_nodes);
+        let html = aidoc::exporter::export_html(&doc, &all_nodes, None);
         std::fs::write(out_html, html).context("write html")?;
         println!("exported HTML → {out_html}");
     }

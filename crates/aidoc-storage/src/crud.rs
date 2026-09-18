@@ -363,6 +363,16 @@ pub fn get_branch(
     Ok(row)
 }
 
+/// Convenience: branch of the document's current head. Returns `None` for
+/// "main" (no side-table row).
+pub fn head_branch(conn: &Connection, doc_id: &str) -> Result<Option<String>, StoreError> {
+    let head = match head_revision(conn, doc_id)? {
+        Some(h) => h,
+        None => return Ok(None),
+    };
+    get_branch(conn, doc_id, &head)
+}
+
 pub fn list_parents(
     conn: &Connection,
     doc_id: &str,
@@ -484,6 +494,38 @@ pub fn insert_change(tx: &Transaction<'_>, doc_id: &str, ch: &Change) -> Result<
         ],
     )?;
     Ok(())
+}
+
+/// List revisions on a specific named branch. Revisions without a branch
+/// label (i.e. main) are not returned unless you pass `branch = "main"`.
+pub fn list_revisions_by_branch(
+    conn: &Connection,
+    doc_id: &str,
+    branch: &str,
+) -> Result<Vec<Revision>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id, r.parent, r.operation, r.message, r.created_at FROM revisions r \
+         JOIN revision_branches b ON b.doc_id = r.doc_id AND b.revision = r.id \
+         WHERE r.doc_id = ?1 AND b.branch = ?2 \
+         ORDER BY r.created_at ASC",
+    )?;
+    let mut out = Vec::new();
+    let mut rows = stmt.query(rusqlite::params![doc_id, branch])?;
+    while let Some(r) = rows.next()? {
+        let parent: Option<String> = r.get(1)?;
+        let created: String = r.get(4)?;
+        let id = aidoc_model::id::RevisionId::new(r.get::<_, String>(0)?);
+        let branch_label = get_branch(conn, doc_id, id.as_str())?;
+        out.push(Revision {
+            id,
+            parent: parent.map(aidoc_model::id::RevisionId::new),
+            operation: aidoc_model::id::OpId::new(r.get::<_, String>(2)?),
+            message: r.get(3)?,
+            created_at: chrono::DateTime::parse_from_rfc3339(&created)?.with_timezone(&Utc),
+            branch: branch_label,
+        });
+    }
+    Ok(out)
 }
 
 fn change_type_str(t: ChangeType) -> &'static str {

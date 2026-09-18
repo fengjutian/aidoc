@@ -54,6 +54,8 @@ struct RevisionDto {
     operation: String,
     created_at: String,
     message: Option<String>,
+    /// Named branch this revision belongs to (None = main).
+    branch: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -187,9 +189,20 @@ async fn apply_operation_tool(
     })
 }
 
-async fn history(state: Arc<ServerState>) -> Result<Vec<RevisionDto>, String> {
+async fn history(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<RevisionDto>, String> {
+    let branch: Option<String> = args
+        .get("branch")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .filter(|s| !s.is_empty());
     with_doc(&state, |s, doc_id| {
-        let revs = crud::list_revisions(s.store.conn(), doc_id).str_err()?;
+        let revs = match &branch {
+            Some(name) => crud::list_revisions_by_branch(s.store.conn(), doc_id, name)
+                .str_err()?,
+            None => crud::list_revisions(s.store.conn(), doc_id).str_err()?,
+        };
         Ok(revs
             .iter()
             .map(|r| RevisionDto {
@@ -198,6 +211,7 @@ async fn history(state: Arc<ServerState>) -> Result<Vec<RevisionDto>, String> {
                 operation: r.operation.as_str().to_owned(),
                 created_at: r.created_at.to_rfc3339(),
                 message: r.message.clone(),
+                branch: r.branch.clone(),
             })
             .collect())
     })
@@ -223,6 +237,7 @@ async fn revert_tool(
             operation: out.op_id.as_str().to_owned(),
             created_at: chrono::Utc::now().to_rfc3339(),
             message: Some(format!("revert to {}", out.target_revision.as_str())),
+            branch: None,
         })
     })
 }
@@ -432,7 +447,7 @@ impl AIDocServer {
         );
         tools.insert(
             "history".into(),
-            tool_entry("List revision history.", |s, _| history(s)),
+            tool_entry("List revision history.", |s, a| history(s, a)),
         );
         tools.insert(
             "revert".into(),
@@ -649,6 +664,7 @@ fn rev_to_dto(rev: &RevisionId, op_id: &OpId) -> RevisionDto {
         operation: op_id.as_str().to_owned(),
         created_at: chrono::Utc::now().to_rfc3339(),
         message: None,
+        branch: None,
     }
 }
 
