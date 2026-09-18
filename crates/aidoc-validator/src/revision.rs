@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use crate::ValidationReport;
 
@@ -14,7 +14,11 @@ pub enum RevisionError {
     Store(#[from] aidoc_storage::StoreError),
 }
 
-pub fn check(store: &Store, doc_id: &str, report: &mut ValidationReport) -> Result<(), RevisionError> {
+pub fn check(
+    store: &Store,
+    doc_id: &str,
+    report: &mut ValidationReport,
+) -> Result<(), RevisionError> {
     let revs = crud::list_revisions(store.conn(), doc_id)?;
     let ids: BTreeSet<String> = revs.iter().map(|r| r.id.as_str().into()).collect();
 

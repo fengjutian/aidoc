@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use thiserror::Error;
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use crate::ValidationReport;
 
@@ -14,7 +14,11 @@ pub enum StructureError {
     Store(#[from] aidoc_storage::StoreError),
 }
 
-pub fn check(store: &Store, doc_id: &str, report: &mut ValidationReport) -> Result<(), StructureError> {
+pub fn check(
+    store: &Store,
+    doc_id: &str,
+    report: &mut ValidationReport,
+) -> Result<(), StructureError> {
     let nodes = crud::list_nodes(store.conn(), doc_id)?;
 
     let ids: BTreeSet<String> = nodes.iter().map(|n| n.id.as_str().into()).collect();
@@ -29,7 +33,10 @@ pub fn check(store: &Store, doc_id: &str, report: &mut ValidationReport) -> Resu
                     p.as_str()
                 ));
             }
-            children.entry(p.as_str().into()).or_default().push(n.id.as_str().into());
+            children
+                .entry(p.as_str().into())
+                .or_default()
+                .push(n.id.as_str().into());
         }
     }
 
@@ -63,7 +70,9 @@ pub fn check(store: &Store, doc_id: &str, report: &mut ValidationReport) -> Resu
     let mut visited = BTreeSet::new();
     for n in &nodes {
         if dfs(n.id.as_str(), &children, &mut visiting, &mut visited) {
-            report.structure_errors.push(format!("circular hierarchy at {}", n.id.as_str()));
+            report
+                .structure_errors
+                .push(format!("circular hierarchy at {}", n.id.as_str()));
             break;
         }
     }

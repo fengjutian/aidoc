@@ -1,11 +1,11 @@
 //! Conflict detection / optimistic concurrency (spec §25-§26).
 
 use aidoc_model::{
-    id::{AIDocError, NodeId, RevisionId},
     Operation,
+    id::{AIDocError, NodeId, RevisionId},
 };
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CheckError {
@@ -49,11 +49,7 @@ pub fn check_revision(
 }
 
 /// Verify the node-level preconditions for an op (target exists, hashes match).
-pub fn check_conflict(
-    store: &Store,
-    doc_id: &str,
-    op: &Operation,
-) -> Result<(), CheckError> {
+pub fn check_conflict(store: &Store, doc_id: &str, op: &Operation) -> Result<(), CheckError> {
     if let Some(target) = &op.target {
         let node = crud::get_node(store.conn(), doc_id, target)?
             .ok_or_else(|| CheckError::MissingTarget(target.as_str().into()))?;
@@ -72,11 +68,7 @@ pub fn check_conflict(
 }
 
 /// Convenience: confirm both at once.
-pub fn check_all(
-    store: &Store,
-    doc_id: &str,
-    op: &Operation,
-) -> Result<RevisionId, CheckError> {
+pub fn check_all(store: &Store, doc_id: &str, op: &Operation) -> Result<RevisionId, CheckError> {
     let head = check_revision(store, doc_id, op)?;
     check_conflict(store, doc_id, op)?;
     Ok(head)

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use aidoc::{open_package, create_package, save_package, Package, Store};
+use aidoc::{Package, Store, create_package, open_package, save_package};
 
 pub struct Session {
     pub package: Option<Package>,

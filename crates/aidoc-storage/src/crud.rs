@@ -1,11 +1,11 @@
 //! Typed CRUD: row ↔ model conversion. Pure functions, no business logic.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params_from_iter, types::Value, Connection, Transaction};
+use rusqlite::{Connection, Transaction, params_from_iter, types::Value};
 
 use aidoc_model::{
-    id::{NodeId, sha256_hex},
     Change, ChangeType, Document, HashRef, Node, NodeKind, Relation, RelationKind, Revision,
+    id::{NodeId, sha256_hex},
 };
 
 use crate::store::StoreError;
@@ -86,13 +86,7 @@ pub fn upsert_document(conn: &Connection, doc: &Document) -> Result<(), StoreErr
                root_node  = excluded.root_node,
                version    = excluded.version,
                updated_at = ?5"#,
-        rusqlite::params![
-            doc.id,
-            doc.title,
-            doc.root_node.as_str(),
-            doc.version,
-            now
-        ],
+        rusqlite::params![doc.id, doc.title, doc.root_node.as_str(), doc.version, now],
     )?;
     Ok(())
 }
@@ -135,11 +129,7 @@ pub fn insert_node(tx: &Transaction<'_>, doc_id: &str, node: &Node) -> Result<()
     Ok(())
 }
 
-pub fn update_node(
-    tx: &Transaction<'_>,
-    doc_id: &str,
-    node: &Node,
-) -> Result<String, StoreError> {
+pub fn update_node(tx: &Transaction<'_>, doc_id: &str, node: &Node) -> Result<String, StoreError> {
     let attrs = serde_json::to_string(&node.attributes)?;
     let hash = sha256_hex(node.content.as_bytes());
     tx.execute(
@@ -232,8 +222,7 @@ pub fn get_content_hash(
     doc_id: &str,
     node_id: &NodeId,
 ) -> Result<Option<String>, StoreError> {
-    let mut stmt =
-        conn.prepare("SELECT content_hash FROM nodes WHERE doc_id = ?1 AND id = ?2")?;
+    let mut stmt = conn.prepare("SELECT content_hash FROM nodes WHERE doc_id = ?1 AND id = ?2")?;
     let mut rows = stmt.query(rusqlite::params![doc_id, node_id.as_str()])?;
     if let Some(r) = rows.next()? {
         Ok(Some(r.get(0)?))
@@ -264,11 +253,7 @@ pub fn insert_relation(
     Ok(())
 }
 
-pub fn delete_relation(
-    tx: &Transaction<'_>,
-    doc_id: &str,
-    rel_id: &str,
-) -> Result<(), StoreError> {
+pub fn delete_relation(tx: &Transaction<'_>, doc_id: &str, rel_id: &str) -> Result<(), StoreError> {
     tx.execute(
         "DELETE FROM relations WHERE doc_id = ?1 AND id = ?2",
         rusqlite::params![doc_id, rel_id],
@@ -277,9 +262,8 @@ pub fn delete_relation(
 }
 
 pub fn list_relations(conn: &Connection, doc_id: &str) -> Result<Vec<Relation>, StoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, source, target, kind, custom_kind FROM relations WHERE doc_id = ?1",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id, source, target, kind, custom_kind FROM relations WHERE doc_id = ?1")?;
     let mut out = Vec::new();
     let mut rows = stmt.query([doc_id])?;
     while let Some(r) = rows.next()? {
@@ -476,7 +460,7 @@ pub fn list_changes_for_revision(
                 other => {
                     return Err(StoreError::Integrity(format!(
                         "unknown change_type {other}"
-                    )))
+                    )));
                 }
             },
             before: before.map(|h| HashRef { hash: h }),
@@ -524,7 +508,8 @@ pub fn load_snapshot(
     doc_id: &str,
     rev_id: &str,
 ) -> Result<Option<Vec<Node>>, StoreError> {
-    let mut stmt = conn.prepare("SELECT payload FROM snapshots WHERE doc_id = ?1 AND revision = ?2")?;
+    let mut stmt =
+        conn.prepare("SELECT payload FROM snapshots WHERE doc_id = ?1 AND revision = ?2")?;
     let mut rows = stmt.query(rusqlite::params![doc_id, rev_id])?;
     if let Some(r) = rows.next()? {
         let raw: String = r.get(0)?;

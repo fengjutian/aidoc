@@ -8,7 +8,11 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 
 #[derive(Parser)]
-#[command(name = "aidoc", version, about = "AIDoc v0.1 — AI-native structured document format")]
+#[command(
+    name = "aidoc",
+    version,
+    about = "AIDoc v0.1 — AI-native structured document format"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -131,23 +135,37 @@ enum Cmd {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Init { path, doc_id, title } => commands::init::run(&path, doc_id, title),
+        Cmd::Init {
+            path,
+            doc_id,
+            title,
+        } => commands::init::run(&path, doc_id, title),
         Cmd::Info { path } => commands::info::run(&path),
         Cmd::NodeList { path, json } => commands::node_list::run(&path, json),
-        Cmd::NodeShow { path, node_id, json } => commands::node_show::run(&path, &node_id, json),
-        Cmd::Apply { path, op_file, print_revision } => {
-            commands::apply::run(&path, op_file.as_deref(), print_revision)
-        }
+        Cmd::NodeShow {
+            path,
+            node_id,
+            json,
+        } => commands::node_show::run(&path, &node_id, json),
+        Cmd::Apply {
+            path,
+            op_file,
+            print_revision,
+        } => commands::apply::run(&path, op_file.as_deref(), print_revision),
         Cmd::History { path, json } => commands::history::run(&path, json),
         Cmd::Diff { path, from, to } => commands::diff::run(&path, from.as_deref(), to.as_deref()),
-        Cmd::Revert { path, target, reason } => {
-            commands::revert::run(&path, &target, reason.as_deref())
-        }
+        Cmd::Revert {
+            path,
+            target,
+            reason,
+        } => commands::revert::run(&path, &target, reason.as_deref()),
         Cmd::Validate { path } => commands::validate::run(&path),
         Cmd::Export { path, out, format } => commands::export::run(&path, &out, &format),
         Cmd::Demo { path, export_html } => commands::demo::run(&path, export_html.as_deref()),
-        Cmd::Example { template, path, export_html } => {
-            commands::example::run(&template, &path, export_html.as_deref())
-        }
+        Cmd::Example {
+            template,
+            path,
+            export_html,
+        } => commands::example::run(&template, &path, export_html.as_deref()),
     }
 }

@@ -4,10 +4,10 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
-    apply_operation, create_package, open_package, revert_to, save_package, Document, Node,
-    NodeKind, NodeId, Operation, OperationType, Patch, Provenance, Revision, RevisionId, OpId,
+    Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch, Provenance, Revision,
+    RevisionId, apply_operation, create_package, open_package, revert_to, save_package,
 };
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -160,8 +160,13 @@ fn revert(state: tauri::State<'_, AppState>, target: String) -> Result<String, S
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
-    let out = revert_to(&mut s.store, &doc_id, RevisionId::new(target), Some("UI revert".into()))
-        .map_err(err)?;
+    let out = revert_to(
+        &mut s.store,
+        &doc_id,
+        RevisionId::new(target),
+        Some("UI revert".into()),
+    )
+    .map_err(err)?;
     s.package.manifest.set_revision(out.new_revision.as_str());
     Ok(out.new_revision.as_str().to_owned())
 }

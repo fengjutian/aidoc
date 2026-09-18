@@ -8,17 +8,17 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use aidoc::{
-    apply_operation, create_package, export_html as core_export_html, open_package,
-    revert_to, save_package, Document, Node, NodeId, Operation, OperationType, Patch, Provenance,
-    Revision, RevisionId, OpId,
+    Document, Node, NodeId, OpId, Operation, OperationType, Patch, Provenance, Revision,
+    RevisionId, apply_operation, create_package, export_html as core_export_html, open_package,
+    revert_to, save_package,
 };
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use futures::future::BoxFuture;
 use rmcp::{
+    ErrorData, RoleServer, ServerHandler,
     model::*,
     service::{RequestContext, ServiceExt},
-    ErrorData, RoleServer, ServerHandler,
 };
 use serde::Serialize;
 
@@ -78,7 +78,8 @@ async fn init_aidoc(
     let path = need::<String>(&args, "path")?;
     let doc_id = need::<String>(&args, "doc_id")?;
     let title = need::<String>(&args, "title")?;
-    let (mut package, mut store) = create_package(std::path::PathBuf::from(&path), &doc_id, &title).str_err()?;
+    let (mut package, mut store) =
+        create_package(std::path::PathBuf::from(&path), &doc_id, &title).str_err()?;
     seed_root_and_r000(&mut store, &doc_id, &title).str_err()?;
     save_package(&mut package, &store).str_err()?;
     // save_package consumes the temp dir into the target .aidoc zip on disk;
@@ -271,8 +272,14 @@ struct AIDocServer {
 
 struct ToolEntry {
     description: &'static str,
-    handler:
-        Box<dyn Fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> BoxFuture<'static, Result<serde_json::Value, String>> + Send + Sync>,
+    handler: Box<
+        dyn Fn(
+                Arc<ServerState>,
+                serde_json::Map<String, serde_json::Value>,
+            ) -> BoxFuture<'static, Result<serde_json::Value, String>>
+            + Send
+            + Sync,
+    >,
 }
 
 impl AIDocServer {
@@ -282,7 +289,9 @@ impl AIDocServer {
 
         tools.insert(
             "init_aidoc".into(),
-            tool_entry("Create a new .aidoc package and open it.", |s, a| init_aidoc(s, a)),
+            tool_entry("Create a new .aidoc package and open it.", |s, a| {
+                init_aidoc(s, a)
+            }),
         );
         tools.insert(
             "open_aidoc".into(),
@@ -294,7 +303,9 @@ impl AIDocServer {
         );
         tools.insert(
             "list_nodes".into(),
-            tool_entry("List every node in the current document.", |s, _| list_nodes(s)),
+            tool_entry("List every node in the current document.", |s, _| {
+                list_nodes(s)
+            }),
         );
         tools.insert(
             "show_node".into(),
@@ -314,10 +325,9 @@ impl AIDocServer {
         );
         tools.insert(
             "apply_operation".into(),
-            tool_entry(
-                "Apply a raw Operation JSON object.",
-                |s, a| apply_operation_tool(s, a),
-            ),
+            tool_entry("Apply a raw Operation JSON object.", |s, a| {
+                apply_operation_tool(s, a)
+            }),
         );
         tools.insert(
             "history".into(),
@@ -329,7 +339,9 @@ impl AIDocServer {
         );
         tools.insert(
             "export_html".into(),
-            tool_entry("Render the document as standalone HTML.", |s, _| export_html(s)),
+            tool_entry("Render the document as standalone HTML.", |s, _| {
+                export_html(s)
+            }),
         );
         tools.insert(
             "validate".into(),
@@ -345,11 +357,17 @@ impl AIDocServer {
 
 fn tool_entry<F, Fut, T>(description: &'static str, h: F) -> ToolEntry
 where
-    F: Fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> Fut + Send + Sync + Clone + 'static,
+    F: Fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> Fut
+        + Send
+        + Sync
+        + Clone
+        + 'static,
     Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
     T: Serialize + Send + 'static,
 {
-    let handler = move |s: Arc<ServerState>, args: serde_json::Map<String, serde_json::Value>| -> BoxFuture<'static, Result<serde_json::Value, String>> {
+    let handler = move |s: Arc<ServerState>,
+                        args: serde_json::Map<String, serde_json::Value>|
+          -> BoxFuture<'static, Result<serde_json::Value, String>> {
         let h = h.clone();
         let fut = async move {
             match h(s, args).await {
@@ -359,7 +377,10 @@ where
         };
         Box::pin(fut)
     };
-    ToolEntry { description, handler: Box::new(handler) }
+    ToolEntry {
+        description,
+        handler: Box::new(handler),
+    }
 }
 
 // ---------- ServerHandler impl ----------
@@ -395,7 +416,10 @@ impl ServerHandler for AIDocServer {
                 t
             })
             .collect();
-        Ok(ListToolsResult { tools, ..Default::default() })
+        Ok(ListToolsResult {
+            tools,
+            ..Default::default()
+        })
     }
 
     async fn call_tool(
@@ -416,9 +440,7 @@ impl ServerHandler for AIDocServer {
             request.arguments.unwrap_or_default();
         let state = self.state.clone();
         match (entry.handler)(state, args).await {
-            Ok(serde_json::Value::Null) => {
-                Ok(CallToolResult::success(vec![Content::text("ok")]))
-            }
+            Ok(serde_json::Value::Null) => Ok(CallToolResult::success(vec![Content::text("ok")])),
             Ok(v) => match serde_json::to_string(&v) {
                 Ok(s) => Ok(CallToolResult::success(vec![Content::text(s)])),
                 Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
@@ -519,7 +541,11 @@ fn seed_root_and_r000(store: &mut Store, doc_id: &str, title: &str) -> anyhow::R
     use aidoc::NodeKind;
     use aidoc_storage::AnyhowErr;
     store.tx::<_, _, AnyhowErr>(|tx| {
-        let doc = Document::new(doc_id.to_string(), title.to_string(), NodeId::from_validated("root"));
+        let doc = Document::new(
+            doc_id.to_string(),
+            title.to_string(),
+            NodeId::from_validated("root"),
+        );
         crud::upsert_document(tx, &doc)?;
         let mut root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
         root.content = title.to_string();

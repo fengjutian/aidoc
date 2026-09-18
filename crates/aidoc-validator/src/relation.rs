@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use crate::ValidationReport;
 
@@ -14,7 +14,11 @@ pub enum RelationError {
     Store(#[from] aidoc_storage::StoreError),
 }
 
-pub fn check(store: &Store, doc_id: &str, report: &mut ValidationReport) -> Result<(), RelationError> {
+pub fn check(
+    store: &Store,
+    doc_id: &str,
+    report: &mut ValidationReport,
+) -> Result<(), RelationError> {
     let nodes = crud::list_nodes(store.conn(), doc_id)?;
     let ids: BTreeSet<String> = nodes.iter().map(|n| n.id.as_str().into()).collect();
 

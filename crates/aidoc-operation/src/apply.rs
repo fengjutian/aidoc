@@ -4,12 +4,12 @@ use chrono::Utc;
 use thiserror::Error;
 
 use aidoc_model::{
-    id::{sha256_hex, AIDocError, OpId, RevisionId},
     Change, ChangeType, HashRef, Operation, OperationType, Patch, Provenance, Relation,
     RelationKind,
+    id::{AIDocError, OpId, RevisionId, sha256_hex},
 };
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 #[derive(Debug, Error)]
 pub enum ApplyError {
@@ -385,7 +385,10 @@ pub fn apply_operation(
     })
 }
 
-fn materialize_create(id: &aidoc_model::id::NodeId, patch: &Patch) -> Result<aidoc_model::Node, ApplyError> {
+fn materialize_create(
+    id: &aidoc_model::id::NodeId,
+    patch: &Patch,
+) -> Result<aidoc_model::Node, ApplyError> {
     let mut node = aidoc_model::Node::new(id.clone(), aidoc_model::NodeKind::Generic);
     apply_patch_to_node(&mut node, patch);
     Ok(node)
@@ -422,11 +425,7 @@ fn record_change(
     after: Option<&String>,
     summary: &str,
 ) -> Result<(), ApplyError> {
-    let change_id = format!(
-        "CH-{}-{}",
-        rev.as_str(),
-        node.as_str()
-    );
+    let change_id = format!("CH-{}-{}", rev.as_str(), node.as_str());
     let ch = Change {
         id: change_id,
         revision: rev.clone(),
@@ -459,11 +458,7 @@ fn next_revision_seq(
         )
         .optional()?;
     Ok(match row {
-        Some(id) => id
-            .trim_start_matches('R')
-            .parse::<u64>()
-            .unwrap_or(0)
-            + 1,
+        Some(id) => id.trim_start_matches('R').parse::<u64>().unwrap_or(0) + 1,
         None => 0,
     })
 }

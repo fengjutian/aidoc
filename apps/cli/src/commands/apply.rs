@@ -2,7 +2,7 @@ use std::io::Read;
 
 use anyhow::{Context, Result};
 
-use aidoc::{apply_operation, Operation};
+use aidoc::{Operation, apply_operation};
 
 use crate::session::Session;
 
@@ -14,7 +14,9 @@ pub fn run(path: &str, op_file: Option<&str>, print_revision: bool) -> Result<()
         }
         None => {
             let mut buf = String::new();
-            std::io::stdin().read_to_string(&mut buf).context("read stdin")?;
+            std::io::stdin()
+                .read_to_string(&mut buf)
+                .context("read stdin")?;
             serde_json::from_str(&buf).context("parse stdin JSON")?
         }
     };

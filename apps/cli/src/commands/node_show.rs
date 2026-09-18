@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use aidoc::storage::crud;
 
@@ -16,9 +16,15 @@ pub fn run(path: &str, node_id: &str, json: bool) -> Result<()> {
     } else {
         println!("id        : {}", node.id.as_str());
         println!("kind      : {:?}", node.kind);
-        println!("parent    : {}", node.parent.as_ref().map(|p| p.as_str()).unwrap_or("-"));
+        println!(
+            "parent    : {}",
+            node.parent.as_ref().map(|p| p.as_str()).unwrap_or("-")
+        );
         println!("position  : {}", node.position);
-        println!("semantic  : {}", node.semantic_type.as_deref().unwrap_or("-"));
+        println!(
+            "semantic  : {}",
+            node.semantic_type.as_deref().unwrap_or("-")
+        );
         println!("content   :");
         for line in node.content.lines() {
             println!("  {line}");

@@ -13,9 +13,9 @@ pub fn extract_zip(zip_path: &Path, dest: &Path) -> io::Result<()> {
     let mut archive = ZipArchive::new(file)?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let entry_path = entry.enclosed_name().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "bad zip entry name")
-        })?;
+        let entry_path = entry
+            .enclosed_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "bad zip entry name"))?;
         let out_path = dest.join(entry_path);
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;

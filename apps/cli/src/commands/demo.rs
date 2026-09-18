@@ -5,11 +5,9 @@
 
 use anyhow::{Context, Result};
 
-use aidoc::storage::{crud, AnyhowErr};
 use aidoc::id::NodeId;
-use aidoc::{
-    NodeKind, Operation, OperationType, Patch, Provenance, Revision, RevisionId, OpId,
-};
+use aidoc::storage::{AnyhowErr, crud};
+use aidoc::{NodeKind, OpId, Operation, OperationType, Patch, Provenance, Revision, RevisionId};
 
 use crate::session::Session;
 
@@ -49,8 +47,8 @@ pub fn run(path: &str, export_html: Option<&str>) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("R000: {e}"))?;
 
     // CREATE an "architecture" node.
-    let head0 = crud::head_revision(s.store.conn(), doc_id)?
-        .ok_or_else(|| anyhow::anyhow!("no head"))?;
+    let head0 =
+        crud::head_revision(s.store.conn(), doc_id)?.ok_or_else(|| anyhow::anyhow!("no head"))?;
     let create_op = Operation {
         id: OpId::new("OP-001"),
         op_type: OperationType::Create,

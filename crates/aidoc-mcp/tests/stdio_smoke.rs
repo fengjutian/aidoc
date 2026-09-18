@@ -13,7 +13,7 @@
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
@@ -24,7 +24,11 @@ fn binary_path() -> PathBuf {
     p.pop(); // -> crates/
     p.pop(); // -> repo root
     p.push("target");
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     p.push(profile);
     #[cfg(windows)]
     p.push("aidoc-mcp.exe");
@@ -177,7 +181,6 @@ async fn mcp_handshake_and_init_aidoc() {
     )
     .await;
     let init_call = recv(&mut stdout).await;
-    eprintln!("[smoke] init_aidoc response: {init_call:?}");
     assert!(
         init_call["error"].is_null(),
         "init_aidoc errored: {init_call:?}"

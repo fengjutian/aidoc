@@ -87,7 +87,10 @@ pub fn create_package(
 
     // Write empty HTML.
     let title_str: String = title.into();
-    std::fs::write(temp.path().join("document/document.html"), minimal_html(&title_str))?;
+    std::fs::write(
+        temp.path().join("document/document.html"),
+        minimal_html(&title_str),
+    )?;
 
     // Open an empty SQLite db.
     let db_path = temp.path().join(".internal/document.db");
@@ -129,9 +132,9 @@ impl TempDir {
 }
 
 fn tempdir() -> std::io::Result<TempDir> {
-    Ok(TempDir(tempfile::Builder::new()
-        .prefix("aidoc-")
-        .tempdir()?))
+    Ok(TempDir(
+        tempfile::Builder::new().prefix("aidoc-").tempdir()?,
+    ))
 }
 
 /// Live handle to a workspace extracted from a `.aidoc` file.

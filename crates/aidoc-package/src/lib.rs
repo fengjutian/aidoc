@@ -5,4 +5,4 @@ pub mod workspace;
 pub mod zip_io;
 
 pub use manifest::Manifest;
-pub use workspace::{create_package, open_package, save_package, Package, PackageError};
+pub use workspace::{Package, PackageError, create_package, open_package, save_package};

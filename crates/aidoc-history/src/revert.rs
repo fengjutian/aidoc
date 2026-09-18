@@ -5,11 +5,11 @@ use rusqlite::Transaction;
 use thiserror::Error;
 
 use aidoc_model::{
-    id::{sha256_hex, OpId, RevisionId},
     Change, ChangeType, HashRef, Node, Operation, OperationType, Provenance,
+    id::{OpId, RevisionId, sha256_hex},
 };
 
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 #[derive(Debug, Error)]
 pub enum RevertError {
@@ -50,8 +50,7 @@ pub fn revert_to(
         .ok_or_else(|| RevertError::TargetNotFound(target_revision.as_str().into()))?;
 
     // current head becomes the parent of the new revision.
-    let head = crud::head_revision(store.conn(), doc_id)?
-        .ok_or(RevertError::RevertToHead)?;
+    let head = crud::head_revision(store.conn(), doc_id)?.ok_or(RevertError::RevertToHead)?;
     if head == target_revision.as_str() {
         return Err(RevertError::RevertToHead);
     }
@@ -119,7 +118,7 @@ pub fn revert_to(
                 op.target_revision.as_ref().map(|r| r.as_str().to_owned()),
                 actor_json,
                 rusqlite::types::Value::Null,
-                op.reason.as_ref().map(|s| s.as_str()),
+                op.reason.as_deref(),
                 created_at.to_rfc3339()
             ],
         )?;
@@ -160,9 +159,7 @@ fn snapshot_at_revision(
     doc_id: &str,
     rev_id: &RevisionId,
 ) -> Result<Vec<Node>, RevertError> {
-    match crud::load_snapshot(store.conn(), doc_id, rev_id.as_str())
-        .map_err(RevertError::Store)?
-    {
+    match crud::load_snapshot(store.conn(), doc_id, rev_id.as_str()).map_err(RevertError::Store)? {
         Some(nodes) => Ok(nodes),
         None => Err(RevertError::TargetNotFound(format!(
             "no snapshot for {}",

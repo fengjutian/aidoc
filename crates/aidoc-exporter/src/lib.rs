@@ -15,7 +15,10 @@ pub fn export_markdown(doc: &Document, nodes: &[Node]) -> String {
     let by_parent = group_by_parent(nodes);
     let root_id = doc.root_node.clone();
     if let Some(roots) = by_parent.get(&None) {
-        let top = roots.iter().find(|n| n.id == root_id).or_else(|| roots.first());
+        let top = roots
+            .iter()
+            .find(|n| n.id == root_id)
+            .or_else(|| roots.first());
         if let Some(root) = top {
             emit_md(&mut out, root, &by_parent, 1);
         }
@@ -100,7 +103,11 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
             let _ = writeln!(out, "> **Solution** — {content}\n");
         }
         NodeKind::Reference => {
-            let _ = writeln!(out, "[ref]({})", node.attributes.get("target").cloned().unwrap_or_default());
+            let _ = writeln!(
+                out,
+                "[ref]({})",
+                node.attributes.get("target").cloned().unwrap_or_default()
+            );
         }
         NodeKind::Details | NodeKind::Summary | NodeKind::Generic => {
             if !content.is_empty() {

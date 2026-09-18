@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use aidoc::apply_operation;
 use aidoc::id::{NodeId, OpId, RevisionId};
 use aidoc::model::{Operation, OperationType, Patch, Provenance};
-use aidoc::storage::{crud, AnyhowErr};
+use aidoc::storage::{AnyhowErr, crud};
 
 use crate::session::Session;
 
@@ -57,7 +57,10 @@ fn order_system_nodes() -> Vec<TmplNode> {
 
 fn api_system_nodes() -> Vec<TmplNode> {
     vec![
-        TmplNode { id: "root", content: "REST API 设计规范" },
+        TmplNode {
+            id: "root",
+            content: "REST API 设计规范",
+        },
         TmplNode {
             id: "overview",
             content: "公司内部 REST API 统一规范，覆盖版本、鉴权、错误处理。",
@@ -83,10 +86,14 @@ fn api_system_nodes() -> Vec<TmplNode> {
 
 fn knowledge_graph_nodes() -> Vec<TmplNode> {
     vec![
-        TmplNode { id: "root", content: "Knowledge Graph for Code Wiki" },
+        TmplNode {
+            id: "root",
+            content: "Knowledge Graph for Code Wiki",
+        },
         TmplNode {
             id: "overview",
-            content: "AIDoc Node graph backed by SQLite. Relations enable structure-aware RAG. " },
+            content: "AIDoc Node graph backed by SQLite. Relations enable structure-aware RAG. ",
+        },
         TmplNode {
             id: "requirement-rag",
             content: "RAG chunks must carry node_id, parent_id, revision, content_hash, relations.",
@@ -107,7 +114,9 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
         "order-system" => order_system_nodes().leak(),
         "api-system" => api_system_nodes().leak(),
         "knowledge-graph" => knowledge_graph_nodes().leak(),
-        other => anyhow::bail!("unknown template: {other} (try order-system / api-system / knowledge-graph)"),
+        other => anyhow::bail!(
+            "unknown template: {other} (try order-system / api-system / knowledge-graph)"
+        ),
     };
 
     let doc_id = template.replace('-', "_");
@@ -117,7 +126,11 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
     let mut s = Session::create(path, &doc_id, title)?;
     s.store
         .tx::<_, _, AnyhowErr>(|tx| {
-            let doc = aidoc::Document::new(doc_id.clone(), title.to_string(), NodeId::from_validated("root"));
+            let doc = aidoc::Document::new(
+                doc_id.clone(),
+                title.to_string(),
+                NodeId::from_validated("root"),
+            );
             crud::upsert_document(tx, &doc)?;
             Ok::<_, AnyhowErr>(())
         })
@@ -158,7 +171,8 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
             }),
             reason: Some(format!("scaffold {}/{}", template, tpl.id)),
         };
-        apply_operation(&mut s.store, &doc_id, op).map_err(|e| anyhow::anyhow!("create {}: {e}", tpl.id))?;
+        apply_operation(&mut s.store, &doc_id, op)
+            .map_err(|e| anyhow::anyhow!("create {}: {e}", tpl.id))?;
         // After apply, read the actual current head (R001 after first CREATE, etc).
         let current_head = aidoc::storage::crud::head_revision(s.store.conn(), &doc_id)
             .map_err(|e| anyhow::anyhow!("head_revision: {e}"))?

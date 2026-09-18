@@ -10,9 +10,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use aidoc_model::{
-    Document, Node, NodeKind, Relation,
-};
+use aidoc_model::{Document, Node, NodeKind, Relation};
 
 pub fn render_html(doc: &Document, nodes: &[Node], relations: &[Relation]) -> String {
     let mut out = String::new();
@@ -22,13 +20,19 @@ pub fn render_html(doc: &Document, nodes: &[Node], relations: &[Relation]) -> St
         "  <meta charset=\"utf-8\">\n  <title>{}</title>\n",
         escape(&doc.title)
     );
-    out.push_str("  <style>.aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em}</style>\n");
+    out.push_str(
+        "  <style>.aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em}</style>\n",
+    );
     out.push_str("</head>\n<body>\n");
 
     let by_parent = group_by_parent(nodes);
     if let Some(root) = by_parent.get(&None) {
         // root is the unique top-level node (matches doc.root_node).
-        if let Some(root_node) = root.iter().find(|n| n.id == doc.root_node).or_else(|| root.first()) {
+        if let Some(root_node) = root
+            .iter()
+            .find(|n| n.id == doc.root_node)
+            .or_else(|| root.first())
+        {
             emit_node(&mut out, root_node, &by_parent, nodes, relations, 1);
         }
     }
@@ -81,7 +85,7 @@ fn emit_node(
                 );
                 emit_children(out, node, by_parent, all, relations, depth + 1);
             } else {
-                let _ = write!(out, "{}<section{}{}>\n", indent, id_attr, sem_attr);
+                let _ = writeln!(out, "{}<section{}{}>", indent, id_attr, sem_attr);
                 if !node.content.is_empty() {
                     let _ = writeln!(out, "{}  <p>{}</p>", indent, escape(&node.content));
                 }
@@ -94,7 +98,7 @@ fn emit_node(
         }
         NodeKind::Heading => {
             // Depth 1 is h2 (h1 reserved for root).
-            let level = (depth + 1).min(6).max(2);
+            let level = (depth + 1).clamp(2, 6);
             let _ = writeln!(
                 out,
                 "{}<h{}{}>{}</h{}>",
@@ -106,10 +110,22 @@ fn emit_node(
             );
         }
         NodeKind::Code => {
-            let _ = writeln!(out, "{}<pre{}><code>{}</code></pre>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<pre{}><code>{}</code></pre>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
         NodeKind::Blockquote => {
-            let _ = writeln!(out, "{}<blockquote{}>{}</blockquote>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<blockquote{}>{}</blockquote>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
         NodeKind::List => {
             let _ = writeln!(out, "{}<ul{}>", indent, id_attr);
@@ -117,7 +133,13 @@ fn emit_node(
             let _ = writeln!(out, "{}</ul>", indent);
         }
         NodeKind::ListItem => {
-            let _ = writeln!(out, "{}<li{}>{}</li>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<li{}>{}</li>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
         NodeKind::Table => {
             let _ = writeln!(out, "{}<table{}>", indent, id_attr);
@@ -130,7 +152,13 @@ fn emit_node(
             let _ = writeln!(out, "{}</tr>", indent);
         }
         NodeKind::TableCell => {
-            let _ = writeln!(out, "{}<td{}>{}</td>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<td{}>{}</td>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
         NodeKind::Link => {
             let href = node.attributes.get("href").cloned().unwrap_or_default();
@@ -155,14 +183,31 @@ fn emit_node(
             );
         }
         NodeKind::Diagram => {
-            let engine = node.attributes.get("engine").cloned().unwrap_or_else(|| "mermaid".into());
-            let dtype = node.attributes.get("type").cloned().unwrap_or_else(|| "flowchart".into());
+            let engine = node
+                .attributes
+                .get("engine")
+                .cloned()
+                .unwrap_or_else(|| "mermaid".into());
+            let dtype = node
+                .attributes
+                .get("type")
+                .cloned()
+                .unwrap_or_else(|| "flowchart".into());
             let _ = writeln!(
                 out,
                 "{}<diagram{}{} engine=\"{}\" type=\"{}\">",
-                indent, id_attr, sem_attr, escape(&engine), escape(&dtype)
+                indent,
+                id_attr,
+                sem_attr,
+                escape(&engine),
+                escape(&dtype)
             );
-            let _ = writeln!(out, "{}  <pre class=\"aidoc-diagram\">{}</pre>", indent, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}  <pre class=\"aidoc-diagram\">{}</pre>",
+                indent,
+                escape(&node.content)
+            );
             let _ = writeln!(out, "{}</diagram>", indent);
         }
         NodeKind::CodeRef => {
@@ -220,10 +265,22 @@ fn emit_node(
             let _ = writeln!(out, "{}</details>", indent);
         }
         NodeKind::Summary => {
-            let _ = writeln!(out, "{}<summary{}>{}</summary>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<summary{}>{}</summary>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
         NodeKind::Generic => {
-            let _ = writeln!(out, "{}<div{}>{}</div>", indent, id_attr, escape(&node.content));
+            let _ = writeln!(
+                out,
+                "{}<div{}>{}</div>",
+                indent,
+                id_attr,
+                escape(&node.content)
+            );
         }
     }
 }
@@ -262,7 +319,7 @@ fn escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aidoc_model::{id::NodeId, Document, Node};
+    use aidoc_model::{Document, Node, id::NodeId};
 
     #[test]
     fn renders_minimal_doc() {

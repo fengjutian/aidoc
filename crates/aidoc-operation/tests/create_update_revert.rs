@@ -8,11 +8,11 @@
 
 use aidoc_history::revert_to;
 use aidoc_model::{
-    Document, Node, NodeKind, NodeId, Operation, OperationType, Patch, Provenance, Revision,
-    RevisionId, OpId,
+    Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch, Provenance, Revision,
+    RevisionId,
 };
 use aidoc_operation::apply_operation;
-use aidoc_storage::{crud, AnyhowErr, Store};
+use aidoc_storage::{AnyhowErr, Store, crud};
 
 fn doc_id() -> &'static str {
     "test-doc"
@@ -61,7 +61,11 @@ fn create_update_revert_loop() {
         reason: Some("create".into()),
     };
     let out1 = apply_operation(&mut store, doc_id(), create_op).expect("create");
-    assert!(out1.revision.as_str().starts_with("R00"), "got {}", out1.revision.as_str());
+    assert!(
+        out1.revision.as_str().starts_with("R00"),
+        "got {}",
+        out1.revision.as_str()
+    );
 
     // 2. UPDATE with content v2.
     let update_op = Operation {

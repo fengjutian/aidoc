@@ -10,4 +10,4 @@
 
 pub mod revert;
 
-pub use revert::{revert_to, RevertError, RevertOutcome};
+pub use revert::{RevertError, RevertOutcome, revert_to};
