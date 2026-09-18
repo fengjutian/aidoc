@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use aidoc::validator;
+use aidoc::validator::{self, ValidationCategory};
 
 use crate::session::Session;
 
@@ -30,34 +30,14 @@ pub fn run(path: &str) -> Result<()> {
         return Ok(());
     }
 
-    if !report.identity_errors.is_empty() {
-        println!("[identity] {}", report.identity_errors.len());
-        for e in &report.identity_errors {
-            println!("  - {e}");
+    for cat in ValidationCategory::all() {
+        let findings = report.by_category(cat);
+        if findings.is_empty() {
+            continue;
         }
-    }
-    if !report.structure_errors.is_empty() {
-        println!("[structure] {}", report.structure_errors.len());
-        for e in &report.structure_errors {
-            println!("  - {e}");
-        }
-    }
-    if !report.relation_errors.is_empty() {
-        println!("[relation] {}", report.relation_errors.len());
-        for e in &report.relation_errors {
-            println!("  - {e}");
-        }
-    }
-    if !report.revision_errors.is_empty() {
-        println!("[revision] {}", report.revision_errors.len());
-        for e in &report.revision_errors {
-            println!("  - {e}");
-        }
-    }
-    if !report.code_ref_errors.is_empty() {
-        println!("[code-ref] {}", report.code_ref_errors.len());
-        for e in &report.code_ref_errors {
-            println!("  - {e}");
+        println!("[{}] {}", cat.as_str(), findings.len());
+        for f in &findings {
+            println!("  - {}", f.message);
         }
     }
     let total = report.total_errors();

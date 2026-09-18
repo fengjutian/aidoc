@@ -58,9 +58,9 @@ fn identity_validator_rejects_empty_node_id() {
 
     let report = aidoc_validator::validate(&store, doc_id()).expect("validate runs");
     assert!(
-        !report.identity_errors.is_empty(),
+        !report.identity_errors().is_empty(),
         "identity validator should fire on empty node id, got {:?}",
-        report.identity_errors
+        report.identity_errors()
     );
 }
 
@@ -73,9 +73,9 @@ fn structure_validator_rejects_circular_parent() {
 
     let report = aidoc_validator::validate(&store, doc_id()).expect("validate runs");
     assert!(
-        !report.structure_errors.is_empty(),
+        !report.structure_errors().is_empty(),
         "structure validator should fire on circular hierarchy, got {:?}",
-        report.structure_errors
+        report.structure_errors()
     );
 }
 
@@ -98,9 +98,9 @@ fn relation_validator_rejects_unknown_target() {
 
     let report = aidoc_validator::validate(&store, doc_id()).expect("validate runs");
     assert!(
-        !report.relation_errors.is_empty(),
+        !report.relation_errors().is_empty(),
         "relation validator should fire when target is missing, got {:?}",
-        report.relation_errors
+        report.relation_errors()
     );
 }
 
@@ -124,9 +124,9 @@ fn revision_validator_rejects_missing_parent() {
 
     let report = aidoc_validator::validate(&store, doc_id()).expect("validate runs");
     assert!(
-        !report.revision_errors.is_empty(),
+        !report.revision_errors().is_empty(),
         "revision validator should fire on missing parent, got {:?}",
-        report.revision_errors
+        report.revision_errors()
     );
 }
 
@@ -145,8 +145,8 @@ fn code_ref_validator_rejects_empty_file_attribute() {
 
     let report = aidoc_validator::validate(&store, doc_id()).expect("validate runs");
     assert!(
-        !report.code_ref_errors.is_empty(),
+        !report.code_ref_errors().is_empty(),
         "code_ref validator should fire on empty file attribute, got {:?}",
-        report.code_ref_errors
+        report.code_ref_errors()
     );
 }

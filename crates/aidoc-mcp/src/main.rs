@@ -261,19 +261,14 @@ async fn validate(state: Arc<ServerState>) -> Result<String, String> {
             out.push_str("OK -- 0 errors across identity/structure/relation/revision/code-ref");
             return Ok(out);
         }
-        for (label, errs) in [
-            ("identity", &report.identity_errors),
-            ("structure", &report.structure_errors),
-            ("relation", &report.relation_errors),
-            ("revision", &report.revision_errors),
-            ("code-ref", &report.code_ref_errors),
-        ] {
+        for cat in aidoc_validator::ValidationCategory::all() {
+            let errs = report.by_category(cat);
             if errs.is_empty() {
                 continue;
             }
-            out.push_str(&format!("[{label}] {} error(s):\n", errs.len()));
-            for e in errs {
-                out.push_str(&format!("  - {e}\n"));
+            out.push_str(&format!("[{}] {} error(s):\n", cat.as_str(), errs.len()));
+            for f in errs {
+                out.push_str(&format!("  - {}\n", f.message));
             }
         }
         out.push_str(&format!("\ntotal: {total}"));

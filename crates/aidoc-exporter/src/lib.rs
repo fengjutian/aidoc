@@ -1,15 +1,136 @@
-//! HTML / Markdown export for an open `.aidoc` package.
+//! HTML / Markdown export for an open `.aidoc` package (spec §41-§43).
+//!
+//! Export is pluggable: each format implements the [`Exporter`] trait and is
+//! resolved by [`exporter_for`]. Adding DOCX / PDF later means a new
+//! [`ExportFormat`] variant + an [`Exporter`] impl, without touching callers —
+//! they keep going through [`export`].
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use aidoc_model::{Document, Node, NodeKind};
+use aidoc_model::{Document, Node, NodeKind, Relation};
 
-pub fn export_html(doc: &Document, nodes: &[Node], branch: Option<&str>) -> String {
-    aidoc_renderer::render_html(doc, nodes, &[], branch)
+/// Supported export formats (spec §41).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExportFormat {
+    Html,
+    Markdown,
 }
 
+impl ExportFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Html => "html",
+            Self::Markdown => "md",
+        }
+    }
+}
+
+/// Error returned when a format string is not recognised.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownExportFormat(pub String);
+
+impl std::fmt::Display for UnknownExportFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown format: {} (use html or md)", self.0)
+    }
+}
+
+impl std::error::Error for UnknownExportFormat {}
+
+/// Parse a user-supplied format string, absorbing the `md` / `markdown`
+/// aliases. Implemented as [`std::str::FromStr`] so `"...".parse()` works.
+impl std::str::FromStr for ExportFormat {
+    type Err = UnknownExportFormat;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "html" => Ok(Self::Html),
+            "md" | "markdown" => Ok(Self::Markdown),
+            other => Err(UnknownExportFormat(other.to_owned())),
+        }
+    }
+}
+
+/// Everything an [`Exporter`] needs to render a document.
+pub struct ExportInput<'a> {
+    pub doc: &'a Document,
+    pub nodes: &'a [Node],
+    pub relations: &'a [Relation],
+    pub branch: Option<&'a str>,
+}
+
+/// A pluggable exporter for a single [`ExportFormat`].
+pub trait Exporter {
+    fn format(&self) -> ExportFormat;
+    fn export(&self, input: &ExportInput) -> String;
+}
+
+/// HTML exporter — delegates to `aidoc-renderer`. Unlike the pre-refactor
+/// free function, this threads `input.relations` into the renderer.
+pub struct HtmlExporter;
+
+impl Exporter for HtmlExporter {
+    fn format(&self) -> ExportFormat {
+        ExportFormat::Html
+    }
+    fn export(&self, input: &ExportInput) -> String {
+        aidoc_renderer::render_html(input.doc, input.nodes, input.relations, input.branch)
+    }
+}
+
+/// Markdown exporter (spec §43). Lossy by design — AIDoc semantics degrade.
+pub struct MarkdownExporter;
+
+impl Exporter for MarkdownExporter {
+    fn format(&self) -> ExportFormat {
+        ExportFormat::Markdown
+    }
+    fn export(&self, input: &ExportInput) -> String {
+        render_markdown(input.doc, input.nodes)
+    }
+}
+
+/// Resolve the exporter for a format.
+pub fn exporter_for(fmt: ExportFormat) -> Box<dyn Exporter> {
+    match fmt {
+        ExportFormat::Html => Box::new(HtmlExporter),
+        ExportFormat::Markdown => Box::new(MarkdownExporter),
+    }
+}
+
+/// Dispatch to the exporter registered for `fmt`.
+pub fn export(fmt: ExportFormat, input: &ExportInput) -> String {
+    exporter_for(fmt).export(input)
+}
+
+/// Back-compat wrapper: export HTML (no relations threaded).
+pub fn export_html(doc: &Document, nodes: &[Node], branch: Option<&str>) -> String {
+    export(
+        ExportFormat::Html,
+        &ExportInput {
+            doc,
+            nodes,
+            relations: &[],
+            branch,
+        },
+    )
+}
+
+/// Back-compat wrapper: export Markdown.
 pub fn export_markdown(doc: &Document, nodes: &[Node]) -> String {
+    export(
+        ExportFormat::Markdown,
+        &ExportInput {
+            doc,
+            nodes,
+            relations: &[],
+            branch: None,
+        },
+    )
+}
+
+fn render_markdown(doc: &Document, nodes: &[Node]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "# {}\n", doc.title);
     let by_parent = group_by_parent(nodes);
@@ -133,5 +254,31 @@ mod tests {
         let doc = Document::new("d1", "Demo Title", NodeId::from_validated("root"));
         let out = export_markdown(&doc, &[]);
         assert!(out.contains("# Demo Title"));
+    }
+
+    #[test]
+    fn format_parses_aliases() {
+        assert_eq!("html".parse::<ExportFormat>().unwrap(), ExportFormat::Html);
+        assert_eq!("md".parse::<ExportFormat>().unwrap(), ExportFormat::Markdown);
+        assert_eq!(
+            "markdown".parse::<ExportFormat>().unwrap(),
+            ExportFormat::Markdown
+        );
+        assert!("pdf".parse::<ExportFormat>().is_err());
+    }
+
+    #[test]
+    fn dispatch_matches_direct_call() {
+        let doc = Document::new("d1", "Demo Title", NodeId::from_validated("root"));
+        let input = ExportInput {
+            doc: &doc,
+            nodes: &[],
+            relations: &[],
+            branch: None,
+        };
+        assert_eq!(
+            export(ExportFormat::Markdown, &input),
+            export_markdown(&doc, &[])
+        );
     }
 }
