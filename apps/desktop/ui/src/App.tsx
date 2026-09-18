@@ -102,17 +102,43 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.doc_id]);
 
-  // Global ⌘K / Ctrl+K → open command palette.
+  // Global keyboard shortcuts: ⌘K palette, ⌘S save, ⌘E export, ⌘N new node.
+  // Skip when focus is inside an editable field so the OS / Radix can still
+  // handle native text input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editable =
+        tag === "input" ||
+        tag === "textarea" ||
+        target?.isContentEditable === true;
+      // ⌘K should always work even inside inputs (palette jumps to a search
+      // input anyway). Other shortcuts defer to native text handling.
+      const k = e.key.toLowerCase();
+      if (k === "k") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+        return;
+      }
+      if (editable) return;
+      if (k === "s") {
+        e.preventDefault();
+        void onSave();
+      } else if (k === "e") {
+        e.preventDefault();
+        void onExportHtml();
+      } else if (k === "n") {
+        e.preventDefault();
+        const next = `node-${nodes.length + 1}`;
+        void onCreateNode(next, "section", "");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [nodes.length]);
 
   const onInit = async () => {
     setError(null);
