@@ -1,0 +1,21 @@
+[package]
+name = "aidoc-desktop"
+description = "AIDoc v0.1 desktop shell (Tauri 2 + React)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "aidoc_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aidoc = { path = "../../../crates/aidoc" }
+aidoc-storage = { path = "../../../crates/aidoc-storage" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tauri = { version = "2", features = [] }

@@ -57,7 +57,7 @@ pub fn revert_to(
     }
 
     // Build a synthetic Operation describing this revert.
-    let seq = crud::list_revisions(store.conn(), doc_id)?.len() as u64 + 1;
+    let seq = crud::max_revision_seq(store.conn(), doc_id)?;
     let new_rev = RevisionId::from_sequence(seq);
     let op_id = OpId::new(format!("OP-RVT-{:03}", seq));
 
@@ -124,6 +124,7 @@ pub fn revert_to(
             ],
         )?;
 
+        crud::advance_head(tx, doc_id, new_rev.as_str())?;
         crud::insert_revision(
             tx,
             doc_id,

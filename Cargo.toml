@@ -11,6 +11,7 @@ members = [
     "crates/aidoc-exporter",
     "crates/aidoc",
     "apps/cli",
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

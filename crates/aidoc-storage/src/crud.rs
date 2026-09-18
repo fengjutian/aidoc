@@ -348,6 +348,21 @@ pub fn head_revision(conn: &Connection, doc_id: &str) -> Result<Option<String>, 
     }
 }
 
+pub fn max_revision_seq(conn: &Connection, doc_id: &str) -> Result<u64, StoreError> {
+    use rusqlite::OptionalExtension;
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT id FROM revisions WHERE doc_id = ?1 ORDER BY CAST(SUBSTR(id, 2) AS INTEGER) DESC LIMIT 1",
+            rusqlite::params![doc_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match row {
+        Some(id) => id.trim_start_matches('R').parse::<u64>().unwrap_or(0) + 1,
+        None => 0,
+    })
+}
+
 pub fn get_revision(
     conn: &Connection,
     doc_id: &str,

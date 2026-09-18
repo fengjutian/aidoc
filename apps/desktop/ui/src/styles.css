@@ -1,0 +1,154 @@
+:root {
+  color-scheme: light dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #fafafa;
+  color: #1a1a1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1a1a1a;
+    color: #f0f0f0;
+  }
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.topbar button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.topbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tree {
+  border-right: 1px solid rgba(127, 127, 127, 0.25);
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.tree h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.tree ul {
+  margin: 0;
+  padding-left: 1rem;
+  list-style: none;
+}
+
+.tree li {
+  padding: 0.15rem 0;
+  cursor: pointer;
+}
+
+.tree li.active {
+  font-weight: 600;
+}
+
+.tree .kind {
+  opacity: 0.55;
+  font-size: 0.8em;
+  margin-left: 0.3rem;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor .pane {
+  flex: 1;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.editor textarea {
+  width: 100%;
+  height: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.editor .actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.06);
+}
+
+.editor .actions button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.history {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  border-top: 1px dashed rgba(127, 127, 127, 0.3);
+  padding-top: 0.5rem;
+}
+
+.error {
+  color: #c0392b;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(192, 57, 43, 0.1);
+  border-bottom: 1px solid rgba(192, 57, 43, 0.3);
+}

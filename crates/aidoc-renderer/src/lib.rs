@@ -69,12 +69,25 @@ fn emit_node(
 
     match node.kind {
         NodeKind::Section => {
-            let _ = write!(out, "{}<section{}{}>\n", indent, id_attr, sem_attr);
-            if !node.content.is_empty() {
-                let _ = writeln!(out, "{}  <p>{}</p>", indent, escape(&node.content));
+            // The root node doubles as the document title (h1) — we render it
+            // as <h1> rather than nesting <section>.
+            if depth == 1 {
+                let _ = writeln!(
+                    out,
+                    "{}<h1{}>{}</h1>",
+                    indent,
+                    id_attr,
+                    escape(&node.content)
+                );
+                emit_children(out, node, by_parent, all, relations, depth + 1);
+            } else {
+                let _ = write!(out, "{}<section{}{}>\n", indent, id_attr, sem_attr);
+                if !node.content.is_empty() {
+                    let _ = writeln!(out, "{}  <p>{}</p>", indent, escape(&node.content));
+                }
+                emit_children(out, node, by_parent, all, relations, depth + 1);
+                let _ = writeln!(out, "{}</section>", indent);
             }
-            emit_children(out, node, by_parent, all, relations, depth + 1);
-            let _ = writeln!(out, "{}</section>", indent);
         }
         NodeKind::Paragraph => {
             let _ = writeln!(out, "{}<p{}>{}</p>", indent, id_attr, escape(&node.content));
