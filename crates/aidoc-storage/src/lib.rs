@@ -9,6 +9,8 @@ pub mod store;
 
 pub use store::{Store, StoreError};
 
+pub use crud::{FullSnapshot, SnapshotStrategy};
+
 pub use rusqlite;
 
 /// Adapter so `anyhow::Error` (which doesn't impl `std::error::Error`) can

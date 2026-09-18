@@ -4,7 +4,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, Transaction, params_from_iter, types::Value};
 
 use aidoc_model::{
-    Change, ChangeType, Document, HashRef, Node, NodeKind, Relation, RelationKind, Revision,
+    Change, ChangeType, Document, HashRef, Node, NodeKind, Operation, Relation, RelationKind,
+    Revision,
     id::{NodeId, sha256_hex},
 };
 
@@ -592,6 +593,48 @@ fn _params_helper(values: Vec<Value>) -> impl rusqlite::Params {
     params_from_iter(values)
 }
 
+// ---------- Operations ----------
+
+/// Persist an `Operation` row. Single source of truth for the
+/// `INSERT INTO operations(...)` SQL that used to be duplicated across
+/// `aidoc-operation` (apply) and `aidoc-history` (revert).
+///
+/// `created_at` is supplied by the caller so the operation row and the
+/// revision row it produces share one timestamp (matches prior behaviour).
+/// `actor_json` and `patch_json` are serialized here.
+pub fn insert_operation(
+    tx: &Transaction<'_>,
+    doc_id: &str,
+    op: &Operation,
+    created_at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    let actor_json = serde_json::to_string(&op.actor)?;
+    let patch_json = op
+        .patch
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?
+        .map(Value::from)
+        .unwrap_or(Value::Null);
+    tx.execute(
+        r#"INSERT INTO operations(doc_id, id, op_type, target, expected_revision, target_revision, actor_json, patch_json, reason, created_at)
+           VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
+        rusqlite::params![
+            doc_id,
+            op.id.as_str(),
+            op.op_type.as_str(),
+            op.target.as_ref().map(|n| n.as_str().to_owned()),
+            op.expected_revision.as_str(),
+            op.target_revision.as_ref().map(|r| r.as_str().to_owned()),
+            actor_json,
+            patch_json,
+            op.reason.as_deref(),
+            created_at.to_rfc3339()
+        ],
+    )?;
+    Ok(())
+}
+
 // ---------- Snapshots ----------
 
 pub fn save_snapshot(
@@ -631,5 +674,53 @@ pub fn load_snapshot(
         Ok(Some(serde_json::from_str(&raw)?))
     } else {
         Ok(None)
+    }
+}
+
+/// Snapshot persistence strategy (spec §33 seam).
+///
+/// v0.1 ships a single eager [`FullSnapshot`] strategy: every revision stores
+/// the complete live-node set. The trait exists so a future Snapshot+Patch
+/// (delta) strategy can be swapped in without touching the operation engine
+/// or the revert path — both go through this seam.
+pub trait SnapshotStrategy {
+    fn save(
+        &self,
+        tx: &Transaction<'_>,
+        doc_id: &str,
+        rev_id: &str,
+        nodes: &[Node],
+    ) -> Result<(), StoreError>;
+
+    fn load(
+        &self,
+        conn: &Connection,
+        doc_id: &str,
+        rev_id: &str,
+    ) -> Result<Option<Vec<Node>>, StoreError>;
+}
+
+/// Default strategy: store the full node set per revision.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FullSnapshot;
+
+impl SnapshotStrategy for FullSnapshot {
+    fn save(
+        &self,
+        tx: &Transaction<'_>,
+        doc_id: &str,
+        rev_id: &str,
+        nodes: &[Node],
+    ) -> Result<(), StoreError> {
+        save_snapshot(tx, doc_id, rev_id, nodes)
+    }
+
+    fn load(
+        &self,
+        conn: &Connection,
+        doc_id: &str,
+        rev_id: &str,
+    ) -> Result<Option<Vec<Node>>, StoreError> {
+        load_snapshot(conn, doc_id, rev_id)
     }
 }
