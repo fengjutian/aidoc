@@ -15,9 +15,13 @@ and the SQLite-backed `aidoc-storage`.
 ## 启动 dev
 
 ```sh
-cd apps/desktop
-pnpm install          # 前端 deps（apps/desktop/ui）
-pnpm tauri dev        # 启 Tauri，会先 pnpm install + vite dev + cargo run
+# 前端 deps
+cd apps/desktop/ui
+pnpm install
+
+# Rust + Tauri（需先 `cargo install tauri-cli --version "^2.0"`）
+cd ../src-tauri
+cargo tauri dev        # 启 Tauri，会编 src-tauri + 跑 vite dev
 ```
 
 第一次 dev 编译 `src-tauri/` 要几分钟。
@@ -25,9 +29,9 @@ pnpm tauri dev        # 启 Tauri，会先 pnpm install + vite dev + cargo run
 ## 打包
 
 ```sh
-cd apps/desktop
-pnpm tauri build
-# 产物：src-tauri/target/release/bundle/{msi,nsis,exe}/...
+cd apps/desktop/src-tauri
+cargo tauri build
+# 产物：target/release/bundle/{msi,nsis,exe}/...
 ```
 
 ## Tauri 命令 → aidoc core 映射

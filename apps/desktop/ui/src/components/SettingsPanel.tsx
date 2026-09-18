@@ -1,4 +1,4 @@
-import { Github, Info, RotateCcw, Save, Type, Workflow } from "lucide-react";
+import { Github, Info, KeyRound, RotateCcw, Save, Type, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -163,6 +163,43 @@ export function SettingsPanel({
               onChange={(v) => onUpdate({ mermaidTheme: v })}
             />
           </Row>
+
+          <Separator />
+
+          <div className="py-3">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+                <KeyRound className="h-3.5 w-3.5" />
+              </span>
+              <div>
+                <div className="text-sm font-medium">AI / OpenAI</div>
+                <div className="text-xs text-muted-foreground">
+                  Used by the Ask AI panel; stored locally in this browser profile.
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2">
+              <input
+                type="password"
+                placeholder="API key (sk-…)"
+                value={settings.openaiApiKey}
+                onChange={(e) => onUpdate({ openaiApiKey: e.target.value })}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <input
+                placeholder="Base URL (default: https://api.openai.com/v1)"
+                value={settings.openaiBaseUrl}
+                onChange={(e) => onUpdate({ openaiBaseUrl: e.target.value })}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              <input
+                placeholder="Model (default: gpt-4o-mini)"
+                value={settings.openaiModel}
+                onChange={(e) => onUpdate({ openaiModel: e.target.value })}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+          </div>
         </div>
 
         <Separator />

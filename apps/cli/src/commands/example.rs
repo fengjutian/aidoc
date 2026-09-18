@@ -1,4 +1,4 @@
-//! `aidoc example` — scaffold one of the bundled example documents.
+﻿//! `aidoc example` — scaffold one of the bundled example documents.
 
 use anyhow::{Context, Result};
 
@@ -168,6 +168,8 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
             targets: vec![],
             actor: Provenance::human(Some(format!("example:{template}"))),
             patch: Some(Patch {
+                kind: None,
+                position: None,
                 content: Some(tpl.content.to_string()),
                 ..Default::default()
             }),

@@ -218,6 +218,46 @@ pub fn list_nodes(conn: &Connection, doc_id: &str) -> Result<Vec<Node>, StoreErr
     Ok(out)
 }
 
+/// Case-insensitive substring search over node content. Returns up to `limit`
+/// matches ordered by `parent, position, id`. Empty `query` returns an empty
+/// list rather than every row, to keep large documents safe to query.
+pub fn search_nodes(
+    conn: &Connection,
+    doc_id: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<Node>, StoreError> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let needle = format!("%{}%", trimmed.to_lowercase());
+    let mut stmt = conn.prepare(
+        r#"SELECT id, kind, parent, position, semantic_type, content, attributes
+           FROM nodes
+           WHERE doc_id = ?1 AND LOWER(content) LIKE ?2
+           ORDER BY parent, position, id
+           LIMIT ?3"#,
+    )?;
+    let mut out = Vec::new();
+    let mut rows = stmt.query(rusqlite::params![doc_id, needle, limit as i64])?;
+    while let Some(r) = rows.next()? {
+        let kind: String = r.get(1)?;
+        let parent: Option<String> = r.get(2)?;
+        let attrs: String = r.get(6)?;
+        out.push(Node {
+            id: NodeId::from_validated(r.get::<_, String>(0)?),
+            kind: kind_from_str(&kind)?,
+            parent: parent.map(NodeId::from_validated),
+            position: r.get::<_, i64>(3)? as u32,
+            semantic_type: r.get(4)?,
+            content: r.get(5)?,
+            attributes: serde_json::from_str(&attrs)?,
+        });
+    }
+    Ok(out)
+}
+
 pub fn get_content_hash(
     conn: &Connection,
     doc_id: &str,

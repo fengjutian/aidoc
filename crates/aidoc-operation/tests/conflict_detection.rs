@@ -1,4 +1,4 @@
-//! Conflict detection integration tests (spec §25-§26, §36).
+﻿//! Conflict detection integration tests (spec §25-§26, §36).
 //!
 //! Covers every conflict class the engine can raise:
 //!   * REVISION_CONFLICT — stale `expected_revision` (§25)
@@ -60,6 +60,8 @@ fn create_op(id: &str, target: &str, expected_rev: &str, content: &str) -> Opera
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some(content.into()),
             ..Default::default()
         }),
@@ -84,6 +86,8 @@ fn update_op(
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some(content.into()),
             ..Default::default()
         }),
@@ -291,6 +295,8 @@ fn structure_conflict_on_move_cycle() {
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             attributes: attrs,
             ..Default::default()
         }),

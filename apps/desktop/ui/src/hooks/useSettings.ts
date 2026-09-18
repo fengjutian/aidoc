@@ -7,6 +7,9 @@ export interface Settings {
   autosave: boolean;
   fontSize: FontSize;
   mermaidTheme: MermaidTheme;
+  openaiApiKey: string;
+  openaiBaseUrl: string;
+  openaiModel: string;
 }
 
 const STORAGE_KEY = "aidoc-settings";
@@ -15,6 +18,9 @@ const DEFAULT: Settings = {
   autosave: false,
   fontSize: "md",
   mermaidTheme: "auto",
+  openaiApiKey: "",
+  openaiBaseUrl: "",
+  openaiModel: "",
 };
 
 function read(): Settings {
@@ -32,6 +38,10 @@ function read(): Settings {
       )
         ? (parsed.mermaidTheme as MermaidTheme)
         : "auto",
+      openaiApiKey: typeof parsed.openaiApiKey === "string" ? parsed.openaiApiKey : "",
+      openaiBaseUrl:
+        typeof parsed.openaiBaseUrl === "string" ? parsed.openaiBaseUrl : "",
+      openaiModel: typeof parsed.openaiModel === "string" ? parsed.openaiModel : "",
     };
   } catch {
     return DEFAULT;

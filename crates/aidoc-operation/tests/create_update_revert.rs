@@ -1,4 +1,4 @@
-//! Integration test for the full create → update → revert loop.
+﻿//! Integration test for the full create → update → revert loop.
 //!
 //! Hits every MUST rule from spec §54:
 //!   1. Stable node ID
@@ -57,6 +57,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some("v1: 系统使用 MySQL 8.0。".into()),
             ..Default::default()
         }),
@@ -80,6 +82,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::ai("test-agent", Some("test-model".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some("v2: 系统使用 MySQL 8.4，包含分库分表。".into()),
             ..Default::default()
         }),
@@ -148,6 +152,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::human(None),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some("should not apply".into()),
             ..Default::default()
         }),

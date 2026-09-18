@@ -135,6 +135,18 @@ async fn list_nodes(state: Arc<ServerState>) -> Result<Vec<NodeDto>, String> {
     })
 }
 
+async fn search_nodes(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<NodeDto>, String> {
+    let query = need::<String>(&args, "query")?;
+    let limit = opt::<usize>(&args, "limit").unwrap_or(20).max(1);
+    with_doc(&state, |s, doc_id| {
+        let nodes = crud::search_nodes(s.store.conn(), doc_id, &query, limit).str_err()?;
+        Ok(nodes.into_iter().map(node_to_dto).collect())
+    })
+}
+
 async fn show_node(
     state: Arc<ServerState>,
     args: serde_json::Map<String, serde_json::Value>,
@@ -323,6 +335,8 @@ async fn branch(
                 content: None,
                 title: None,
                 semantic_type: None,
+                kind: None,
+                position: None,
                 attributes: attrs,
             }),
             reason: reason.clone(),
@@ -419,6 +433,15 @@ impl AIDocServer {
             tool_entry("List every node in the current document.", |s, _| {
                 list_nodes(s)
             }),
+        );
+        tools.insert(
+            "search_nodes".into(),
+            tool_entry(
+                "Case-insensitive substring search over node content. \
+                 Returns up to `limit` matches (default 20). Empty query returns []. \
+                 Arguments: {query: string, limit?: number}",
+                |s, a| search_nodes(s, a),
+            ),
         );
         tools.insert(
             "show_node".into(),
@@ -607,6 +630,14 @@ fn need<T: serde::de::DeserializeOwned>(
 ) -> Result<T, String> {
     let v = args.get(key).ok_or_else(|| format!("missing arg: {key}"))?;
     serde_json::from_value(v.clone()).str_err()
+}
+
+fn opt<T: serde::de::DeserializeOwned>(
+    args: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<T> {
+    args.get(key)
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
 async fn run_op(

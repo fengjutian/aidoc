@@ -35,6 +35,12 @@ pub fn render_html(
         "  <style>\
          :root{color-scheme:light dark}\
          body{font-family:ui-sans-serif,system-ui,sans-serif;margin:1.5rem auto;max-width:48rem;line-height:1.55;padding:0 1rem}\
+         .aidoc-toc{background:#f5f5f5;border:1px solid #ddd;border-radius:6px;padding:.5em 1em;margin:0 0 1.5em 0}\
+         .aidoc-toc summary{font-weight:600;cursor:pointer;padding:.25em 0}\
+         .aidoc-toc ul{margin:.25em 0;padding-left:1.25em;list-style:none}\
+         .aidoc-toc li{margin:.15em 0}\
+         .aidoc-toc a{color:#444;text-decoration:none}\
+         .aidoc-toc a:hover{text-decoration:underline;color:#2563eb}\
          .aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em;border-radius:4px;overflow:auto}\
          .aidoc-branch{background:#eef;border-left:4px solid #88c;\
                        padding:.5em 1em;margin:0 0 1em 0;font-family:monospace}\
@@ -48,6 +54,9 @@ pub fn render_html(
          [data-aidoc-type=\"solution\"]{border-left:4px solid #f59e0b;background:rgba(245,158,11,.07);padding:.5em 1em}\
          @media (prefers-color-scheme: dark){\
            body{color:#e6e6e6}\
+           .aidoc-toc{background:#1f1f1f;border-color:#333}\
+           .aidoc-toc a{color:#bbb}\
+           .aidoc-toc a:hover{color:#60a5fa}\
            .aidoc-diagram{background:#262626}\
            .aidoc-branch{background:#2a2f44;border-left-color:#5b6dab}\
            pre{background:#1e1e1e;color:#d4d4d4}\
@@ -66,6 +75,19 @@ pub fn render_html(
     }
 
     let by_parent = group_by_parent(nodes);
+
+    // Build a nested table of contents from Section (non-root) + Heading nodes.
+    if let Some(root) = by_parent.get(&None).and_then(|r| {
+        r.iter()
+            .find(|n| n.id == doc.root_node)
+            .or_else(|| r.first())
+    }) {
+        let mut toc = String::new();
+        toc.push_str("<nav class=\"aidoc-toc\" aria-label=\"Table of contents\"><details open><summary>Contents</summary>");
+        build_toc(&mut toc, root, &by_parent, 1);
+        toc.push_str("</details></nav>\n");
+        out.push_str(&toc);
+    }
     if let Some(root) = by_parent.get(&None) {
         // root is the unique top-level node (matches doc.root_node).
         if let Some(root_node) = root
@@ -79,6 +101,45 @@ pub fn render_html(
 
     out.push_str("</body>\n</html>\n");
     out
+}
+
+/// Walk the tree and emit a nested `<ul>` of (Section non-root) + Heading links.
+/// `depth` is the rendering depth; the first call uses 1 (root is depth 1).
+fn build_toc(out: &mut String, parent: &Node, by_parent: &Group<'_>, depth: usize) {
+    let children = match by_parent.get(&Some(parent.id.clone())) {
+        Some(c) => c,
+        None => return,
+    };
+    let mut has_entries = false;
+    let mut buf = String::new();
+    for c in children {
+        let include = matches!(c.kind, NodeKind::Section | NodeKind::Heading)
+            // Skip the root section (it's the document title).
+            && !(depth == 1 && c.id == parent.id);
+        if include {
+            has_entries = true;
+            let _ = writeln!(
+                buf,
+                "<li><a href=\"#{}\">{}</a>",
+                escape(c.id.as_str()),
+                escape(if c.content.is_empty() { c.id.as_str() } else { &c.content })
+            );
+            // Recurse into children for nested lists.
+            build_toc(&mut buf, c, by_parent, depth + 1);
+            buf.push_str("</li>\n");
+        } else {
+            // Section node we don't want as an entry, but still recurse for descendants.
+            build_toc(&mut buf, c, by_parent, depth + 1);
+        }
+    }
+    if has_entries {
+        let _ = writeln!(out, "<ul>");
+        out.push_str(&buf);
+        out.push_str("</ul>\n");
+    } else {
+        // Forward any pure-nested entries even when this level has none of its own.
+        out.push_str(&buf);
+    }
 }
 
 type Group<'a> = HashMap<Option<aidoc_model::id::NodeId>, Vec<&'a Node>>;
@@ -361,6 +422,12 @@ mod tests {
     use super::*;
     use aidoc_model::{Document, Node, id::NodeId};
 
+    fn make_node(id: &str, kind: NodeKind, content: &str) -> Node {
+        let mut n = Node::new(NodeId::from_validated(id), kind);
+        n.content = content.to_string();
+        n
+    }
+
     #[test]
     fn renders_minimal_doc() {
         let doc = Document::new("d1", "Demo", NodeId::from_validated("root"));
@@ -369,5 +436,41 @@ mod tests {
         assert!(html.contains("<h1"));
         assert!(html.contains("Demo"));
         assert!(html.ends_with("</html>\n"));
+    }
+
+    #[test]
+    fn toc_contains_nested_sections_and_headings() {
+        let doc = Document::new("d1", "Doc", NodeId::from_validated("root"));
+        let mut root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
+        root.content = "Doc".into();
+        let mut sec1 = make_node("s1", NodeKind::Section, "Section One");
+        sec1.parent = Some(NodeId::from_validated("root"));
+        let mut h1 = make_node("h1", NodeKind::Heading, "Heading One");
+        h1.parent = Some(NodeId::from_validated("s1"));
+        let mut sec2 = make_node("s2", NodeKind::Section, "Section Two");
+        sec2.parent = Some(NodeId::from_validated("root"));
+
+        let html = render_html(&doc, &[root, sec1, h1, sec2], &[], None);
+        assert!(html.contains("<nav class=\"aidoc-toc\""), "toc nav missing");
+        assert!(html.contains("href=\"#s1\""));
+        assert!(html.contains("href=\"#h1\""));
+        assert!(html.contains("href=\"#s2\""));
+        // Nested: <h1> is under s1, so its <li> must sit inside s1's <ul>.
+        let s1_open = html.find("href=\"#s1\"").unwrap();
+        let h1_pos = html.find("href=\"#h1\"").unwrap();
+        assert!(
+            h1_pos > s1_open,
+            "h1 link should appear after s1 link (nested)"
+        );
+    }
+
+    #[test]
+    fn toc_skips_root_section() {
+        let doc = Document::new("d1", "Title", NodeId::from_validated("root"));
+        let mut root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
+        root.content = "Title".into();
+        let html = render_html(&doc, &[root], &[], None);
+        // The root section IS rendered as <h1>, but it must NOT also be a TOC entry.
+        assert!(html.contains("href=\"#root\"") == false, "root leaked into TOC");
     }
 }

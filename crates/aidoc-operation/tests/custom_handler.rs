@@ -1,4 +1,4 @@
-//! Extensibility test: a custom `OperationHandler` can be registered into the
+﻿//! Extensibility test: a custom `OperationHandler` can be registered into the
 //! `HandlerRegistry` to override a built-in op, proving new ops (or replacement
 //! handlers) can be added without touching the engine's orchestration.
 
@@ -50,6 +50,8 @@ fn create_op() -> Operation {
         targets: vec![],
         actor: Provenance::human(None),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: Some("hello".into()),
             ..Default::default()
         }),

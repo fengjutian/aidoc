@@ -1,4 +1,4 @@
-//! Branch operation integration test (spec §34).
+﻿//! Branch operation integration test (spec §34).
 //!
 //! Verifies that a `Branch` op:
 //!   1. Is accepted by the apply engine.
@@ -52,6 +52,8 @@ fn branch_op(id: &str, expected: &str, name: &str) -> Operation {
         targets: vec![],
         actor: Provenance::human(Some("alice".into())),
         patch: Some(Patch {
+                kind: None,
+                position: None,
             content: None,
             title: None,
             semantic_type: None,

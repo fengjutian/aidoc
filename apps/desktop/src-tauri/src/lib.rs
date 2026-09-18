@@ -13,6 +13,7 @@ use aidoc_storage::{Store, crud};
 
 use serde::Serialize;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 
 #[derive(Default)]
@@ -53,6 +54,94 @@ struct RevisionDto {
 
 fn err<E: std::fmt::Display>(s: E) -> String {
     s.to_string()
+}
+
+/// Resolve the AI agent script path. Search order:
+/// 1. `AIDOC_AI_AGENT` env var (absolute path to agent.py).
+/// 2. `<workspace_root>/apps/ai/agent.py` (works when launched from the repo root).
+/// 3. `apps/ai/agent.py` next to the current exe (dev-time fallback).
+fn ai_agent_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("AIDOC_AI_AGENT") {
+        let p = PathBuf::from(p);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    // Walk up from the exe to find a workspace containing `apps/ai/agent.py`.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut cur = exe.parent().map(|p| p.to_path_buf());
+        while let Some(dir) = cur {
+            let candidate = dir.join("apps").join("ai").join("agent.py");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+            cur = dir.parent().map(|p| p.to_path_buf());
+        }
+    }
+    None
+}
+
+fn ai_chat_impl(
+    prompt: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    doc_path: Option<String>,
+) -> Result<String, String> {
+    let script = ai_agent_path().ok_or_else(|| {
+        "Could not locate apps/ai/agent.py. Set the AIDOC_AI_AGENT env var to its absolute path.".to_string()
+    })?;
+    let key = api_key
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .ok_or_else(|| {
+            "OPENAI_API_KEY not set. Add it in Settings → AI (or export the env var)."
+                .to_string()
+        })?;
+    let base = base_url.unwrap_or_else(|| {
+        std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".into())
+    });
+    let mdl = model.unwrap_or_else(|| {
+        std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into())
+    });
+
+    let mcp_bin = "target\\debug\\aidoc-mcp.exe";
+    let mut cmd = Command::new("python");
+    cmd.arg(&script)
+        .arg("--mcp-bin")
+        .arg(mcp_bin)
+        .arg("--api-key")
+        .arg(&key)
+        .arg("--base-url")
+        .arg(&base)
+        .arg("--model")
+        .arg(&mdl)
+        .arg("--prompt")
+        .arg(&prompt);
+    if let Some(p) = doc_path {
+        cmd.arg("--doc").arg(p);
+    }
+    let out = cmd.output().map_err(|e| format!("spawn python: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+        return Err(format!(
+            "ai_chat exited with status {}: {}",
+            out.status,
+            stderr.trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn ai_chat(
+    prompt: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    doc_path: Option<String>,
+) -> Result<String, String> {
+    ai_chat_impl(prompt, api_key, base_url, model, doc_path)
 }
 
 // ---------------- Commands ----------------
@@ -469,6 +558,7 @@ pub fn run() {
             list_changes,
             set_node_kind,
             move_node,
+            ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");

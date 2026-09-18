@@ -19,6 +19,7 @@ import {
   Undo2,
 } from "lucide-react";
 
+import { AiChat } from "@/components/AiChat";
 import { CommandPalette } from "@/components/CommandPalette";
 import { RevisionDiff } from "@/components/RevisionDiff";
 import { SaveStatus } from "@/components/SaveStatus";
@@ -88,6 +89,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -385,6 +387,20 @@ export default function App() {
               size="icon"
               variant="ghost"
               className="h-8 w-8"
+              onClick={() => setAiOpen(true)}
+            >
+              <Sparkles className="h-4 w-4 text-primary" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Ask AIDoc AI</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
               onClick={() => setSettingsOpen(true)}
             >
               <SettingsIcon className="h-4 w-4" />
@@ -655,6 +671,13 @@ export default function App() {
         onOpenChange={setSettingsOpen}
         settings={settings}
         onUpdate={updateSettings}
+      />
+
+      <AiChat
+        open={aiOpen}
+        onOpenChange={setAiOpen}
+        settings={settings}
+        docPath={null}
       />
     </TooltipProvider>
   );
