@@ -375,6 +375,37 @@ export function AiChat({
             rows={3}
             className="min-h-[60px] flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60"
           />
+          {suggestion && suggestion.items.length > 0 && (
+            <div className="absolute bottom-full left-0 right-12 mb-1 max-h-48 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+              {suggestion.items.map((id, i) => (
+                <button
+                  key={id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    // mousedown (not click) so the textarea doesn't lose focus
+                    e.preventDefault();
+                    applySuggestion(id);
+                  }}
+                  onMouseEnter={() =>
+                    setSuggestion({ ...suggestion, index: i })
+                  }
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1 text-left text-sm",
+                    i === suggestion.index && "bg-accent text-accent-foreground",
+                  )}
+                >
+                  <span className="font-mono">@{id}</span>
+                  {i === suggestion.index && (
+                    <span className="text-[10px] text-muted-foreground">↵</span>
+                  )}
+                </button>
+              ))}
+              <div className="mt-1 border-t px-2 pt-1 text-[10px] text-muted-foreground">
+                ↑↓ navigate · ↵ insert · esc dismiss
+              </div>
+            </div>
+          )}
+          />
           <Button type="submit" disabled={pending || !prompt.trim()}>
             {pending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

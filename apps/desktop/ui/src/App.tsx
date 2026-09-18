@@ -19,6 +19,8 @@ import {
   Sparkles,
   Trash2,
   Undo2,
+  Search as SearchIcon,
+  X as XIcon,
 } from "lucide-react";
 
 import { AiChat } from "@/components/AiChat";
@@ -126,6 +128,37 @@ export default function App() {
     const px = settings.fontSize === "sm" ? "0.85rem" : settings.fontSize === "lg" ? "1.05rem" : "0.95rem";
     document.documentElement.style.setProperty("--editor-font-size", px);
   }, [settings.fontSize]);
+
+  // Debounced node full-text search. Backend exposes `search_nodes` (FTS5
+  // over the SQLite doc db). Empty query → null and the sidebar falls back
+  // to the full nodes list.
+  useEffect(() => {
+    if (!info) {
+      setSearchResults(null);
+      return;
+    }
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      try {
+        const hits = await invoke<NodeRow[]>("search_nodes", { query: q });
+        if (!cancelled) setSearchResults(hits);
+      } catch (e) {
+        if (!cancelled) {
+          setError(String(e));
+          setSearchResults(null);
+        }
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [searchQuery, info]);
 
   // Global keyboard shortcuts: ⌘K palette, ⌘S save, ⌘E export HTML,
   // ⌘⇧E export Markdown, ⌘N new node. Skip when focus is inside an editable
