@@ -537,6 +537,9 @@ fn apply_patch_to_node(node: &mut Node, patch: &Patch) {
     if let Some(content) = &patch.content {
         node.content = content.clone();
     }
+    if let Some(k) = patch.kind {
+        node.kind = k;
+    }
     if let Some(title) = &patch.title {
         // For semantic nodes, title is the first text child — we just stash it
         // in content if content is empty.

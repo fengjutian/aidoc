@@ -6,7 +6,8 @@
 use aidoc::{
     ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
     Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
-    save_package, validator::{ValidationCategory, validate as core_validate},
+    save_package,
+    validator::{ValidationCategory, validate as core_validate},
 };
 use aidoc_storage::{Store, crud};
 
@@ -271,6 +272,52 @@ fn delete_node(state: tauri::State<'_, AppState>, target: String) -> Result<Stri
     Ok(out.revision.as_str().to_owned())
 }
 
+fn parse_kind(s: &str) -> Result<NodeKind, String> {
+    match s {
+        "section" => Ok(NodeKind::Section),
+        "paragraph" => Ok(NodeKind::Paragraph),
+        "heading" => Ok(NodeKind::Heading),
+        "list" => Ok(NodeKind::List),
+        "code" => Ok(NodeKind::Code),
+        "blockquote" => Ok(NodeKind::Blockquote),
+        "diagram" => Ok(NodeKind::Diagram),
+        "code-ref" => Ok(NodeKind::CodeRef),
+        "requirement" => Ok(NodeKind::Requirement),
+        "decision" => Ok(NodeKind::Decision),
+        "problem" => Ok(NodeKind::Problem),
+        "solution" => Ok(NodeKind::Solution),
+        "reference" => Ok(NodeKind::Reference),
+        "generic" => Ok(NodeKind::Generic),
+        other => Err(format!("unknown kind: {other}")),
+    }
+}
+
+#[tauri::command]
+fn set_node_kind(
+    state: tauri::State<'_, AppState>,
+    target: String,
+    kind: String,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let target_id = NodeId::from_validated(&target);
+    let node_kind = parse_kind(&kind)?;
+    let mut patch = Patch::default();
+    patch.kind = Some(node_kind);
+    let op = build_op(
+        &s.store,
+        &doc_id,
+        OperationType::Update,
+        Some(target_id),
+        Some(patch),
+        "UI change kind",
+    )?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
 #[derive(Debug, Serialize)]
 struct ChangeDto {
     node: String,
@@ -395,6 +442,7 @@ pub fn run() {
             create_node,
             delete_node,
             list_changes,
+            set_node_kind,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");

@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::id::{NodeId, OpId, RevisionId};
+use crate::node::NodeKind;
 use crate::provenance::Provenance;
 
 /// Spec §21 — supported v0.1 operation types.
@@ -58,6 +59,9 @@ pub struct Patch {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_type: Option<String>,
+    /// Change the node's structural kind (e.g. `Section` → `Requirement`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<NodeKind>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub attributes: indexmap::IndexMap<String, String>,
 }

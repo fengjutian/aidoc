@@ -4,15 +4,23 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
+  AlertOctagon,
+  AlignLeft,
   Bold,
+  BookmarkCheck,
+  CheckCircle2,
   Code,
   Code2,
+  FileText,
   Heading2,
   Heading3,
   Italic,
   List,
   ListOrdered,
   Quote,
+  Workflow,
+  Wrench,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -54,6 +62,7 @@ interface Props {
   kind: Kind;
   content: string;
   onChange: (html: string) => void;
+  onKindChange?: (kind: Kind) => void;
 }
 
 /**
@@ -61,15 +70,22 @@ interface Props {
  * Tiptap rich-text editor. Output is plain HTML, which the AIDoc Operation
  * pipeline persists as `Patch.content`.
  */
-export function NodeEditor({ kind, content, onChange }: Props) {
+export function NodeEditor({ kind, content, onChange, onKindChange }: Props) {
   if (kind === "diagram") {
     return <DiagramView source={content} onChange={onChange} editable />;
   }
 
-  return <RichEditor kind={kind} content={content} onChange={onChange} />;
+  return (
+    <RichEditor
+      kind={kind}
+      content={content}
+      onChange={onChange}
+      onKindChange={onKindChange}
+    />
+  );
 }
 
-function RichEditor({ kind, content, onChange }: Props) {
+function RichEditor({ kind, content, onChange, onKindChange }: Props) {
   const isCode = kind === "code";
   const isQuote = kind === "blockquote";
   const isRequirement = kind === "requirement";
@@ -128,10 +144,73 @@ function RichEditor({ kind, content, onChange }: Props) {
     <div className="node-editor">
       {editor && (
         <TooltipProvider delayDuration={250}>
+          {onKindChange && (
+            <KindStrip kind={kind} onChange={onKindChange} />
+          )}
           {!isCode && <Toolbar editor={editor} />}
           <EditorContent editor={editor} />
         </TooltipProvider>
       )}
+    </div>
+  );
+}
+
+interface KindDef {
+  id: Kind;
+  label: string;
+  Icon: LucideIcon;
+  tone: string;
+}
+
+const KINDS: KindDef[] = [
+  { id: "section",     label: "Section",     Icon: FileText,       tone: "" },
+  { id: "heading",     label: "Heading",     Icon: Heading2,       tone: "" },
+  { id: "paragraph",   label: "Paragraph",   Icon: AlignLeft,      tone: "" },
+  { id: "list",        label: "List",        Icon: List,           tone: "" },
+  { id: "code",        label: "Code",        Icon: Code,           tone: "" },
+  { id: "blockquote",  label: "Quote",       Icon: Quote,          tone: "" },
+  { id: "diagram",     label: "Diagram",     Icon: Workflow,       tone: "" },
+  { id: "code-ref",    label: "Code ref",    Icon: Code2,          tone: "text-indigo-500" },
+  { id: "requirement", label: "Requirement", Icon: BookmarkCheck,  tone: "text-blue-500" },
+  { id: "decision",    label: "Decision",    Icon: CheckCircle2,   tone: "text-emerald-500" },
+  { id: "problem",     label: "Problem",     Icon: AlertOctagon,   tone: "text-rose-500" },
+  { id: "solution",    label: "Solution",    Icon: Wrench,         tone: "text-amber-500" },
+  { id: "reference",   label: "Reference",   Icon: BookOpen,       tone: "" },
+];
+
+function KindStrip({
+  kind,
+  onChange,
+}: {
+  kind: Kind;
+  onChange: (k: Kind) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+      <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Kind
+      </span>
+      {KINDS.map((k) => {
+        const active = k.id === kind;
+        return (
+          <Tooltip key={k.id}>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={active ? "secondary" : "ghost"}
+                size="sm"
+                className={cn("h-7 px-2 text-xs", active && "font-semibold")}
+                onClick={() => onChange(k.id)}
+                aria-pressed={active}
+              >
+                <k.Icon className={cn("mr-1 h-3.5 w-3.5", k.tone)} />
+                {k.label}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Switch to {k.label}</TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

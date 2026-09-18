@@ -20,6 +20,8 @@ import {
 
 import { CommandPalette } from "@/components/CommandPalette";
 import { RevisionDiff } from "@/components/RevisionDiff";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -70,6 +72,7 @@ const kindIcon = (kind: string) => {
 };
 
 export default function App() {
+  const theme = useTheme();
   const [info, setInfo] = useState<Info | null>(null);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [revs, setRevs] = useState<RevisionRow[]>([]);
@@ -194,6 +197,16 @@ export default function App() {
     }
   };
 
+  const onChangeKind = async (target: string, kind: string) => {
+    setError(null);
+    try {
+      await invoke<string>("set_node_kind", { target, kind });
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const onCopyId = async (id: string) => {
     try {
       await navigator.clipboard.writeText(id);
@@ -235,7 +248,14 @@ export default function App() {
 
   if (!info) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-6 bg-background p-8">
+      <div className="relative flex h-full flex-col items-center justify-center gap-6 bg-background p-8">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle
+            theme={theme.theme}
+            resolved={theme.resolved}
+            onSet={theme.set}
+          />
+        </div>
         <div className="flex items-center gap-3">
           <Sparkles className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-semibold tracking-tight">AIDoc Desktop</h1>
@@ -309,6 +329,12 @@ export default function App() {
           </TooltipTrigger>
           <TooltipContent>Open command palette</TooltipContent>
         </Tooltip>
+
+        <ThemeToggle
+          theme={theme.theme}
+          resolved={theme.resolved}
+          onSet={theme.set}
+        />
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -488,6 +514,7 @@ export default function App() {
                 kind={active.kind as never}
                 content={active.content}
                 onChange={(html) => onUpdate(active.id, html)}
+                onKindChange={(kind) => onChangeKind(active.id, kind)}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
