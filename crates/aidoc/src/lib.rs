@@ -11,8 +11,8 @@ pub use aidoc_model as model;
 pub use aidoc_model::*;
 pub use aidoc_operation as operation;
 pub use aidoc_operation::{
-    ApplyContext, ApplyError, ApplyOutcome, Conflict, ConflictKind, HandlerRegistry, OperationError,
-    OperationHandler, apply_operation, apply_with_registry,
+    ApplyContext, ApplyError, ApplyOutcome, Conflict, ConflictKind, HandlerRegistry,
+    OperationError, OperationHandler, apply_operation, apply_with_registry,
 };
 pub use aidoc_package as package;
 pub use aidoc_package::{

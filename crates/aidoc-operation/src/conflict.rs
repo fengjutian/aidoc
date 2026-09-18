@@ -146,7 +146,10 @@ impl Conflict {
     /// content conflicts carry `expected_hash`/`actual_hash`.
     pub fn to_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
-        map.insert("status".into(), serde_json::Value::String("conflict".into()));
+        map.insert(
+            "status".into(),
+            serde_json::Value::String("conflict".into()),
+        );
         map.insert(
             "kind".into(),
             serde_json::Value::String(self.kind.as_str().into()),
@@ -157,10 +160,16 @@ impl Conflict {
         match self.kind {
             ConflictKind::Revision => {
                 if let Some(e) = &self.expected {
-                    map.insert("expected_revision".into(), serde_json::Value::String(e.clone()));
+                    map.insert(
+                        "expected_revision".into(),
+                        serde_json::Value::String(e.clone()),
+                    );
                 }
                 if let Some(a) = &self.actual {
-                    map.insert("actual_revision".into(), serde_json::Value::String(a.clone()));
+                    map.insert(
+                        "actual_revision".into(),
+                        serde_json::Value::String(a.clone()),
+                    );
                 }
             }
             ConflictKind::Content => {
@@ -215,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn display_contains_lowercase_conflict() {
+    fn display_contains_conflict_case_insensitive() {
         for c in [
             Conflict::revision("R1", "R2"),
             Conflict::node("x"),
@@ -223,7 +232,9 @@ mod tests {
             Conflict::structure("x", "bad parent"),
             Conflict::relation("x", "dup link"),
         ] {
-            assert!(c.to_string().contains("conflict"), "{}", c);
+            // The §36 kind suffix always ends in `_CONFLICT`, so the rendered
+            // line always carries the word regardless of the detail text.
+            assert!(c.to_string().to_lowercase().contains("conflict"), "{c}");
         }
     }
 }

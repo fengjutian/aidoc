@@ -70,8 +70,8 @@ pub fn check_conflict(store: &Store, doc_id: &str, op: &Operation) -> Result<(),
             // §26 — optional content-hash guard. Only meaningful once the node
             // exists; a missing hash reads as empty and therefore conflicts.
             if let Some(expected) = &op.expected_hash {
-                let actual = crud::get_content_hash(store.conn(), doc_id, target)?
-                    .unwrap_or_default();
+                let actual =
+                    crud::get_content_hash(store.conn(), doc_id, target)?.unwrap_or_default();
                 if &actual != expected {
                     return Err(CheckError::Conflict(Conflict::content(
                         target.as_str(),
@@ -122,18 +122,17 @@ fn check_move_structure(store: &Store, doc_id: &str, op: &Operation) -> Result<(
     let Some(target) = &op.target else {
         return Ok(());
     };
-    let Some(new_parent) = op
-        .patch
-        .as_ref()
-        .and_then(|p| p.attributes.get("parent"))
-    else {
+    let Some(new_parent) = op.patch.as_ref().and_then(|p| p.attributes.get("parent")) else {
         // No reparent requested — nothing structural to validate.
         return Ok(());
     };
     if new_parent == target.as_str() {
         return Err(CheckError::Conflict(Conflict::structure(
             target.as_str(),
-            format!("structure conflict: cannot move '{}' under itself", target.as_str()),
+            format!(
+                "structure conflict: cannot move '{}' under itself",
+                target.as_str()
+            ),
         )));
     }
     if new_parent.is_empty() {
@@ -153,7 +152,10 @@ fn check_move_structure(store: &Store, doc_id: &str, op: &Operation) -> Result<(
         if p == target.as_str() {
             return Err(CheckError::Conflict(Conflict::structure(
                 target.as_str(),
-                format!("structure conflict: moving '{}' under '{new_parent}' creates a cycle", target.as_str()),
+                format!(
+                    "structure conflict: moving '{}' under '{new_parent}' creates a cycle",
+                    target.as_str()
+                ),
             )));
         }
         let node = crud::get_node(store.conn(), doc_id, &NodeId::from_validated(p))?;

@@ -91,7 +91,13 @@ fn update_op(
     }
 }
 
-fn link_op(id: &str, op_type: OperationType, src: &str, dst: &str, expected_rev: &str) -> Operation {
+fn link_op(
+    id: &str,
+    op_type: OperationType,
+    src: &str,
+    dst: &str,
+    expected_rev: &str,
+) -> Operation {
     Operation {
         id: OpId::new(id),
         op_type,
@@ -153,9 +159,10 @@ fn content_conflict_on_hash_mismatch() {
     )
     .expect("create");
 
-    let actual = crud::get_content_hash(store.conn(), doc_id(), &NodeId::from_validated("database"))
-        .expect("hash")
-        .expect("present");
+    let actual =
+        crud::get_content_hash(store.conn(), doc_id(), &NodeId::from_validated("database"))
+            .expect("hash")
+            .expect("present");
     assert!(actual.starts_with("sha256:"), "unexpected hash: {actual}");
     let h2 = head(&store);
 
@@ -163,7 +170,13 @@ fn content_conflict_on_hash_mismatch() {
     let err = apply_operation(
         &mut store,
         doc_id(),
-        update_op("OP-002", "database", &h2, "v2", Some("sha256:deadbeef".into())),
+        update_op(
+            "OP-002",
+            "database",
+            &h2,
+            "v2",
+            Some("sha256:deadbeef".into()),
+        ),
     )
     .expect_err("hash mismatch must conflict");
     let c = assert_conflict(err, ConflictKind::Content);
