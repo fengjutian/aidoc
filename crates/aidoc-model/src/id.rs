@@ -1,6 +1,6 @@
 //! Stable ID types used across the model.
 
-use schemars::{JsonSchema, SchemaGenerator, schema_for};
+use schemars::{JsonSchema, SchemaGenerator, schema::Schema};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
