@@ -1,10 +1,14 @@
 //! End-to-end smoke test for the aidoc-mcp binary.
 //!
 //! Spawns the compiled `aidoc-mcp` binary, exchanges the MCP JSON-RPC handshake
-//! over stdio, and verifies initialize / tools/list / init_aidoc / list_nodes.
+//! over stdio using rmcp 0.3.2's line-delimited JSON wire format, and
+//! verifies:
+//!   1. `initialize` round-trip succeeds and the server reports its name.
+//!   2. `tools/list` returns the expected tool names.
+//!   3. `tools/call init_aidoc` creates a real .aidoc package on disk.
+//!   4. `tools/call list_nodes` reports the seed root node.
 //!
-//! Run with:
-//!   cargo test -p aidoc-mcp --test stdio_smoke -- --nocapture
+//! Run with: `cargo test -p aidoc-mcp --test stdio_smoke -- --nocapture`
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -14,9 +18,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 fn binary_path() -> PathBuf {
+    // cargo runs tests from CARGO_MANIFEST_DIR (crates/aidoc-mcp). Walk up
+    // to the repo root to find target/.
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    p.pop();
-    p.pop();
+    p.pop(); // -> crates/
+    p.pop(); // -> repo root
     p.push("target");
     let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
     p.push(profile);
@@ -30,69 +36,29 @@ fn binary_path() -> PathBuf {
 fn workspace_tmp_dir() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.pop();
+    p.pop();
     p.push("target");
     p.push("mcp-smoke");
     std::fs::create_dir_all(&p).expect("create tmp dir");
     p
 }
 
-async fn send_request<W: AsyncWriteExt + Unpin>(
-    w: &mut W,
-    id: Option<u64>,
-    method: &str,
-    params: Value,
-) {
-    let mut body = json!({
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params,
-    });
-    if let Some(id) = id {
-        body["id"] = json!(id);
-    }
-    let body_str = serde_json::to_string(&body).expect("serialize");
-    w.write_all(format!("Content-Length: {}\r\n\r\n", body_str.len()).as_bytes())
-        .await
-        .expect("write header");
-    w.write_all(body_str.as_bytes()).await.expect("write body");
+/// Write one newline-delimited JSON-RPC message to the server's stdin.
+async fn send<W: AsyncWriteExt + Unpin>(w: &mut W, msg: Value) {
+    let s = serde_json::to_string(&msg).expect("serialize");
+    w.write_all(s.as_bytes()).await.expect("write");
+    w.write_all(b"\n").await.expect("newline");
     w.flush().await.expect("flush");
 }
 
-async fn read_response<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Value {
-    let mut header = String::new();
-    let mut first_line = String::new();
-    r.read_line(&mut first_line)
-        .await
-        .expect("read first line");
-    eprintln!("[smoke] first line: {first_line:?}");
-    if first_line.is_empty() {
+/// Read one newline-delimited JSON-RPC message from the server's stdout.
+async fn recv<R: AsyncBufReadExt + Unpin>(r: &mut R) -> Value {
+    let mut line = String::new();
+    let n = r.read_line(&mut line).await.expect("read line");
+    if n == 0 {
         panic!("server closed connection");
     }
-    header.push_str(&first_line);
-    while let Ok(n) = r.read_line(&mut first_line).await {
-        if n == 0 {
-            break;
-        }
-        if first_line == "\r\n" || first_line == "\n" {
-            break;
-        }
-        header.push_str(&first_line);
-    }
-    eprintln!("[smoke] full header: {header:?}");
-    let len = header
-        .lines()
-        .find_map(|l| l.trim_start_matches('\u{feff}').strip_prefix("Content-Length: "))
-        .map(|v| v.trim().parse::<usize>())
-        .transpose()
-        .ok()
-        .flatten()
-        .expect("Content-Length present");
-    let mut buf = vec![0u8; len];
-    tokio::io::AsyncReadExt::read_exact(r, &mut buf)
-        .await
-        .expect("read body");
-    eprintln!("[smoke] body: {}", String::from_utf8_lossy(&buf));
-    serde_json::from_slice(&buf).expect("parse json-rpc")
+    serde_json::from_str(line.trim_end()).expect("parse json-rpc line")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -116,44 +82,54 @@ async fn mcp_handshake_and_init_aidoc() {
         .expect("spawn aidoc-mcp");
     let mut stdin = child.stdin.take().expect("stdin");
     let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
-    let mut stderr = BufReader::new(child.stderr.take().expect("stderr"));
-
-    // Drain stderr in background to avoid blocking.
+    let stderr = child.stderr.take().expect("stderr");
     tokio::spawn(async move {
-        let mut lines = stderr.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            eprintln!("[mcp stderr] {line}");
+        let mut r = BufReader::new(stderr);
+        let mut s = String::new();
+        let _ = tokio::io::AsyncReadExt::read_to_string(&mut r, &mut s).await;
+        if !s.trim().is_empty() {
+            eprintln!("[mcp stderr] {s}");
         }
     });
 
     // 1. initialize
-    send_request(
+    send(
         &mut stdin,
-        Some(1),
-        "initialize",
         json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "stdio_smoke", "version": "0.1.0"}
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "stdio_smoke", "version": "0.1.0"}
+            }
         }),
     )
     .await;
-    let init_resp = read_response(&mut stdout).await;
+    let init_resp = recv(&mut stdout).await;
     assert_eq!(init_resp["jsonrpc"], "2.0");
     assert_eq!(init_resp["id"], 1);
-    let server_info = &init_resp["result"]["serverInfo"];
-    assert_eq!(server_info["name"], "aidoc-mcp");
-    let protocol = init_resp["result"]["protocolVersion"]
-        .as_str()
-        .expect("protocol version");
-    assert_eq!(protocol, "2024-11-05");
+    assert_eq!(init_resp["result"]["serverInfo"]["name"], "aidoc-mcp");
+    assert_eq!(
+        init_resp["result"]["protocolVersion"], "2024-11-05",
+        "server must speak 2024-11-05"
+    );
 
-    // notifications/initialized — required by MCP after the client receives the initialize result.
-    send_request(&mut stdin, None, "notifications/initialized", json!({})).await;
+    // notifications/initialized — required after initialize response
+    send(
+        &mut stdin,
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}),
+    )
+    .await;
 
     // 2. tools/list
-    send_request(&mut stdin, Some(2), "tools/list", json!({})).await;
-    let tools_resp = read_response(&mut stdout).await;
+    send(
+        &mut stdin,
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}),
+    )
+    .await;
+    let tools_resp = recv(&mut stdout).await;
     let names: Vec<&str> = tools_resp["result"]["tools"]
         .as_array()
         .expect("tools array")
@@ -183,21 +159,25 @@ async fn mcp_handshake_and_init_aidoc() {
 
     // 3. tools/call init_aidoc
     let pkg_path_str = pkg_path.to_string_lossy().to_string();
-    send_request(
+    send(
         &mut stdin,
-        Some(3),
-        "tools/call",
         json!({
-            "name": "init_aidoc",
-            "arguments": {
-                "path": pkg_path_str,
-                "doc_id": "mcp_smoke",
-                "title": "MCP Smoke"
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "init_aidoc",
+                "arguments": {
+                    "path": pkg_path_str,
+                    "doc_id": "mcp_smoke",
+                    "title": "MCP Smoke"
+                }
             }
         }),
     )
     .await;
-    let init_call = read_response(&mut stdout).await;
+    let init_call = recv(&mut stdout).await;
+    eprintln!("[smoke] init_aidoc response: {init_call:?}");
     assert!(
         init_call["error"].is_null(),
         "init_aidoc errored: {init_call:?}"
@@ -209,26 +189,28 @@ async fn mcp_handshake_and_init_aidoc() {
     );
 
     // 4. tools/call list_nodes
-    send_request(
+    send(
         &mut stdin,
-        Some(4),
-        "tools/call",
-        json!({"name": "list_nodes", "arguments": {"path": pkg_path_str}}),
+        json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "list_nodes", "arguments": {"path": pkg_path_str}}
+        }),
     )
     .await;
-    let list_call = read_response(&mut stdout).await;
-    let content = &list_call["result"]["content"];
-    assert!(content.is_array(), "expected content array, got {list_call:?}");
-    let text_blob = content
+    let list_call = recv(&mut stdout).await;
+    let content = list_call["result"]["content"]
         .as_array()
-        .unwrap()
+        .expect("content array");
+    let blob = content
         .iter()
         .filter_map(|c| c["text"].as_str())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        text_blob.contains("root"),
-        "list_nodes output missing root: {text_blob}"
+        blob.contains("root"),
+        "list_nodes output missing root: {blob}"
     );
 
     drop(stdin);

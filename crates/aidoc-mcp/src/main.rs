@@ -78,8 +78,11 @@ async fn init_aidoc(
     let path = need::<String>(&args, "path")?;
     let doc_id = need::<String>(&args, "doc_id")?;
     let title = need::<String>(&args, "title")?;
-    let (package, mut store) = create_package(std::path::PathBuf::from(&path), &doc_id, &title).str_err()?;
+    let (mut package, mut store) = create_package(std::path::PathBuf::from(&path), &doc_id, &title).str_err()?;
     seed_root_and_r000(&mut store, &doc_id, &title).str_err()?;
+    save_package(&mut package, &store).str_err()?;
+    // save_package consumes the temp dir into the target .aidoc zip on disk;
+    // we keep the package in memory for subsequent tool calls.
     let info = InitResult {
         doc_id,
         title,
