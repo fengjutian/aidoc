@@ -99,6 +99,7 @@ version = "0.1.0"
 dependencies = [
  "aidoc",
  "aidoc-storage",
+ "aidoc-validator",
  "anyhow",
  "chrono",
  "rmcp",
