@@ -75,8 +75,13 @@ export function AiChat({ open, onOpenChange, settings, docPath }: AiChatProps) {
             Ask AIDoc AI
           </DialogTitle>
           <DialogDescription>
-            Powered by your MCP server + any OpenAI-compatible endpoint.
-            Configure the API key in Settings.
+            {docPath ? (
+              <>
+                Reading <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">{docPath}</code>
+              </>
+            ) : (
+              <>Open a .aidoc document first; the agent will read it via MCP tools.</>
+            )}
           </DialogDescription>
         </DialogHeader>
 

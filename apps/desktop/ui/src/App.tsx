@@ -170,6 +170,7 @@ export default function App() {
         title: title || "Untitled",
       });
       setInfo(i);
+      setDocPath(initPath);
     } catch (e) {
       setError(String(e));
     }
@@ -180,6 +181,7 @@ export default function App() {
     try {
       const i = await invoke<Info>("open_doc", { path: initPath });
       setInfo(i);
+      setDocPath(initPath);
     } catch (e) {
       setError(String(e));
     }
@@ -678,7 +680,7 @@ export default function App() {
         open={aiOpen}
         onOpenChange={setAiOpen}
         settings={settings}
-        docPath={null}
+        docPath={docPath}
       />
     </TooltipProvider>
   );
