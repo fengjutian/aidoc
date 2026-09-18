@@ -9,7 +9,7 @@ use aidoc::{
 };
 use aidoc_storage::{Store, crud};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -74,7 +74,8 @@ fn init_doc(
 
 #[tauri::command]
 fn open_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, String> {
-    let (package, store) = open_package(&mut PathBuf::from(path)).map_err(err)?;
+    let mut p = PathBuf::from(path);
+    let (package, store) = open_package(&mut p).map_err(err)?;
     let info = read_info(&store, &package);
     *state.inner.lock().unwrap() = Some(SessionHandle { store, package });
     Ok(info)
@@ -207,10 +208,10 @@ fn seed_root(store: &mut Store, doc_id: &str, title: &str) -> Result<(), String>
                 title.to_string(),
                 NodeId::from_validated("root"),
             );
-            crud::upsert_document(tx, &doc).map_err(aidoc_storage::StoreError::from)?;
+            crud::upsert_document(tx, &doc)?;
             let mut root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
             root.content = title.to_string();
-            crud::insert_node(tx, doc_id, &root).map_err(aidoc_storage::StoreError::from)?;
+            crud::insert_node(tx, doc_id, &root)?;
             Ok::<_, AnyhowErr>(())
         })
         .map_err(|e| err(format!("seed: {e}")))
@@ -227,8 +228,7 @@ fn seed_initial_revision(store: &mut Store, doc_id: &str) -> Result<(), String> 
     };
     store
         .tx::<_, _, AnyhowErr>(|tx| {
-            crud::insert_revision(tx, doc_id, &rev, true)
-                .map_err(aidoc_storage::StoreError::from)?;
+            crud::insert_revision(tx, doc_id, &rev, true)?;
             Ok::<_, AnyhowErr>(())
         })
         .map_err(|e| err(format!("seed revision: {e}")))

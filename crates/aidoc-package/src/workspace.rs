@@ -124,9 +124,9 @@ fn minimal_html(title: &str) -> String {
 }
 
 // tiny wrapper around tempfile::TempDir so we don't expose the dep in our public API
-struct TempDir(tempfile::TempDir);
+pub struct TempDir(tempfile::TempDir);
 impl TempDir {
-    fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         self.0.path()
     }
 }

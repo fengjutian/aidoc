@@ -19,16 +19,15 @@ pub fn check(
 ) -> Result<(), CodeRefError> {
     let nodes = crud::list_nodes(store.conn(), doc_id)?;
     for n in nodes {
-        if matches!(n.kind, aidoc_model::NodeKind::CodeRef) {
-            if n.attributes
+        if matches!(n.kind, aidoc_model::NodeKind::CodeRef)
+            && n.attributes
                 .get("file")
                 .map(|s| s.is_empty())
                 .unwrap_or(true)
-            {
-                report
-                    .code_ref_errors
-                    .push(format!("code-ref {} missing file attribute", n.id.as_str()));
-            }
+        {
+            report
+                .code_ref_errors
+                .push(format!("code-ref {} missing file attribute", n.id.as_str()));
         }
     }
     Ok(())

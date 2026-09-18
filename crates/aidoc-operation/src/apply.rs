@@ -353,7 +353,7 @@ pub fn apply_operation(
                 op.target_revision.as_ref().map(|r| r.as_str().to_owned()),
                 actor_json,
                 patch_json,
-                op.reason.as_ref().map(|s| s.as_str()),
+                op.reason.as_deref(),
                 created_at.to_rfc3339()
             ],
         )?;
@@ -415,6 +415,7 @@ fn apply_patch_to_node(node: &mut aidoc_model::Node, patch: &Patch) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_change(
     tx: &rusqlite::Transaction<'_>,
     doc_id: &str,
@@ -443,22 +444,4 @@ fn record_change(
 #[allow(dead_code)]
 fn _force_use(_: Provenance) {}
 
-/// Pick the next revision sequence number by parsing existing `R###` ids and
-/// returning `max + 1` (or 0 if no revisions exist).
-fn next_revision_seq(
-    conn: &rusqlite::Connection,
-    doc_id: &str,
-) -> Result<u64, aidoc_storage::StoreError> {
-    use rusqlite::OptionalExtension;
-    let row: Option<String> = conn
-        .query_row(
-            "SELECT id FROM revisions WHERE doc_id = ?1 ORDER BY CAST(SUBSTR(id, 2) AS INTEGER) DESC LIMIT 1",
-            rusqlite::params![doc_id],
-            |r| r.get(0),
-        )
-        .optional()?;
-    Ok(match row {
-        Some(id) => id.trim_start_matches('R').parse::<u64>().unwrap_or(0) + 1,
-        None => 0,
-    })
-}
+// `crud::max_revision_seq` owns the R### math now; see aidoc-storage.

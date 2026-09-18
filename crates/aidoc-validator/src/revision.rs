@@ -23,14 +23,14 @@ pub fn check(
     let ids: BTreeSet<String> = revs.iter().map(|r| r.id.as_str().into()).collect();
 
     for r in &revs {
-        if let Some(parent) = &r.parent {
-            if !ids.contains(parent.as_str()) {
-                report.revision_errors.push(format!(
-                    "revision {} has missing parent {}",
-                    r.id.as_str(),
-                    parent.as_str()
-                ));
-            }
+        if let Some(parent) = &r.parent
+            && !ids.contains(parent.as_str())
+        {
+            report.revision_errors.push(format!(
+                "revision {} has missing parent {}",
+                r.id.as_str(),
+                parent.as_str()
+            ));
         }
     }
 

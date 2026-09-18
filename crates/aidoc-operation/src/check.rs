@@ -53,15 +53,13 @@ pub fn check_conflict(store: &Store, doc_id: &str, op: &Operation) -> Result<(),
     if let Some(target) = &op.target {
         let node = crud::get_node(store.conn(), doc_id, target)?
             .ok_or_else(|| CheckError::MissingTarget(target.as_str().into()))?;
-        if let Some(expected) = op.patch.as_ref().and_then(|p| p.content.as_ref()) {
-            if node.content != *expected && op.op_type == aidoc_model::OperationType::Update {
-                // We only treat as conflict if a hash was explicitly supplied.
-                if let Some(actual_hash) = crud::get_content_hash(store.conn(), doc_id, target)? {
-                    if actual_hash != "sha256:placeholder" {
-                        // mismatch is informational — caller may decide to fail.
-                    }
-                }
-            }
+        if let Some(expected) = op.patch.as_ref().and_then(|p| p.content.as_ref())
+            && node.content != *expected
+            && op.op_type == aidoc_model::OperationType::Update
+            && let Some(actual_hash) = crud::get_content_hash(store.conn(), doc_id, target)?
+            && actual_hash != "sha256:placeholder"
+        {
+            // mismatch is informational — caller may decide to fail.
         }
     }
     Ok(())

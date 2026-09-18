@@ -4,6 +4,10 @@
 //! requests through a HashMap of free async functions. Every tool calls
 //! into the same `aidoc` core pipeline the CLI uses, so spec MUSTs hold.
 
+// Tool registry uses explicit `|s, a| foo(s, a)` closures — reads clearly as
+// a dispatch table and avoids footguns around arg arity.
+#![allow(clippy::redundant_closure)]
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -270,16 +274,16 @@ struct AIDocServer {
     tools: Arc<HashMap<String, ToolEntry>>,
 }
 
+type ToolHandler = dyn Fn(
+        Arc<ServerState>,
+        serde_json::Map<String, serde_json::Value>,
+    ) -> BoxFuture<'static, Result<serde_json::Value, String>>
+    + Send
+    + Sync;
+
 struct ToolEntry {
     description: &'static str,
-    handler: Box<
-        dyn Fn(
-                Arc<ServerState>,
-                serde_json::Map<String, serde_json::Value>,
-            ) -> BoxFuture<'static, Result<serde_json::Value, String>>
-            + Send
-            + Sync,
-    >,
+    handler: Box<ToolHandler>,
 }
 
 impl AIDocServer {
@@ -488,11 +492,11 @@ async fn run_op(
     target: String,
     content: Option<String>,
 ) -> Result<RevisionDto, String> {
-    let doc_id = current_doc_id(&state)?;
+    let _doc_id = current_doc_id(&state)?;
     let head = with_doc(&state, |s, doc_id| {
-        Ok(crud::head_revision(s.store.conn(), doc_id)
+        crud::head_revision(s.store.conn(), doc_id)
             .str_err()?
-            .ok_or_else(|| "no head revision".to_string())?)
+            .ok_or_else(|| "no head revision".to_string())
     })?;
 
     let op = Operation {

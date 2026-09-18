@@ -80,7 +80,7 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
             let _ = writeln!(out, "![{content}]({src})");
         }
         NodeKind::Diagram => {
-            let _ = writeln!(out, "```{}\n{}\n```\n", "mermaid", content);
+            let _ = writeln!(out, "```mermaid\n{}\n```", content);
         }
         NodeKind::CodeRef => {
             let file = node.attributes.get("file").cloned().unwrap_or_default();
