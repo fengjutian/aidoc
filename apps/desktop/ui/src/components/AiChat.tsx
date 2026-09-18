@@ -38,7 +38,9 @@ export function AiChat({ open, onOpenChange, settings, docPath }: AiChatProps) {
   const send = async () => {
     const text = prompt.trim();
     if (!text || pending) return;
-    setHistory((h) => [...h, { role: "user", content: text }]);
+    const prior = history;
+    const next = [...prior, { role: "user" as const, content: text }];
+    setHistory(next);
     setPrompt("");
     setPending(true);
     try {
@@ -48,6 +50,7 @@ export function AiChat({ open, onOpenChange, settings, docPath }: AiChatProps) {
         baseUrl: settings.openaiBaseUrl,
         model: settings.openaiModel,
         docPath,
+        history: prior,
       });
       setHistory((h) => [
         ...h,

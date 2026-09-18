@@ -202,13 +202,27 @@ def run_agent(
     model: str,
     prompt: str,
     system: str | None = None,
+    history: list[dict] | None = None,
     max_steps: int = 6,
 ) -> str:
-    """Drive the model in a single-turn tool-call loop."""
+    """Drive the model in a multi-turn tool-call loop.
+
+    `history` (if given) is a list of `{role, content}` dicts in chronological
+    order. The current `prompt` is appended last. Only `user` and `assistant`
+    turns are forwarded; everything else is dropped.
+    """
     tools = list_tools(mcp)
     messages: list[dict] = []
     if system:
         messages.append({"role": "system", "content": system})
+    if history:
+        for turn in history:
+            role = turn.get("role")
+            content = turn.get("content")
+            if role in ("user", "assistant") and isinstance(content, str):
+                # Trim assistant turns so the conversation doesn't blow the
+                # context window if the agent took many tool steps.
+                messages.append({"role": role, "content": content[:4000]})
     messages.append({"role": "user", "content": prompt})
 
     with httpx.Client() as client:
@@ -284,6 +298,11 @@ def parse_args() -> argparse.Namespace:
         ),
         help="System prompt",
     )
+    p.add_argument(
+        "--history-json",
+        default=None,
+        help="JSON array of {role, content} prior turns to prepend before the prompt",
+    )
     return p.parse_args()
 
 
@@ -305,6 +324,17 @@ def main() -> int:
         if args.doc:
             print(f"[agent] opening: {args.doc}", file=sys.stderr)
             call_tool(mcp, "open_aidoc", {"path": args.doc})
+        history: list[dict] = []
+        if args.history_json:
+            try:
+                parsed = json.loads(args.history_json)
+                if isinstance(parsed, list):
+                    history = parsed
+                else:
+                    print("[agent] --history-json must be a JSON array, ignoring",
+                          file=sys.stderr)
+            except json.JSONDecodeError as exc:
+                print(f"[agent] bad --history-json: {exc}", file=sys.stderr)
         answer = run_agent(
             mcp,
             base_url=args.base_url,
@@ -312,6 +342,7 @@ def main() -> int:
             model=args.model,
             prompt=args.prompt,
             system=args.system,
+            history=history,
         )
         print(answer)
         return 0

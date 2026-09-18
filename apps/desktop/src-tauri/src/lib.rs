@@ -87,6 +87,7 @@ fn ai_chat_impl(
     base_url: Option<String>,
     model: Option<String>,
     doc_path: Option<String>,
+    history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
     let script = ai_agent_path().ok_or_else(|| {
         "Could not locate apps/ai/agent.py. Set the AIDOC_AI_AGENT env var to its absolute path.".to_string()
@@ -121,6 +122,24 @@ fn ai_chat_impl(
     if let Some(p) = doc_path {
         cmd.arg("--doc").arg(p);
     }
+    if let Some(h) = history {
+        let trimmed: Vec<serde_json::Value> = h
+            .into_iter()
+            .filter_map(|turn| {
+                let role = turn.get("role")?.as_str()?;
+                let content = turn.get("content")?.as_str()?;
+                if role == "user" || role == "assistant" {
+                    Some(serde_json::json!({"role": role, "content": content}))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !trimmed.is_empty() {
+            let json = serde_json::to_string(&trimmed).map_err(|e| e.to_string())?;
+            cmd.arg("--history-json").arg(json);
+        }
+    }
     let out = cmd.output().map_err(|e| format!("spawn python: {e}"))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -140,8 +159,9 @@ fn ai_chat(
     base_url: Option<String>,
     model: Option<String>,
     doc_path: Option<String>,
+    history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
-    ai_chat_impl(prompt, api_key, base_url, model, doc_path)
+    ai_chat_impl(prompt, api_key, base_url, model, doc_path, history)
 }
 
 // ---------------- Commands ----------------

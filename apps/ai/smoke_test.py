@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -50,6 +51,7 @@ def main() -> int:
         assert "list_nodes" in names, "list_nodes missing from tool registry"
         assert "open_aidoc" in names, "open_aidoc missing from tool registry"
         assert "show_node" in names, "show_node missing from tool registry"
+        assert "search_nodes" in names, "search_nodes missing from tool registry"
 
         if Path(doc).exists():
             print(f"[smoke] opening {doc}", file=sys.stderr)
@@ -61,6 +63,25 @@ def main() -> int:
 
             nodes_text = call_tool(mcp, "list_nodes", {})
             print(f"[smoke] list_nodes ✓ ({len(nodes_text)} bytes)", file=sys.stderr)
+
+            # Search for something that's very likely in a real doc.
+            search = call_tool(mcp, "search_nodes", {"query": "system", "limit": 5})
+            search_rows = json.loads(search)
+            print(
+                f"[smoke] search_nodes('system') ✓ {len(search_rows)} rows",
+                file=sys.stderr,
+            )
+
+            # Empty query must return [] not every node.
+            empty = call_tool(mcp, "search_nodes", {"query": "", "limit": 50})
+            empty_rows = json.loads(empty)
+            print(
+                f"[smoke] search_nodes('') ✓ {len(empty_rows)} rows (expect 0)",
+                file=sys.stderr,
+            )
+            assert len(empty_rows) == 0, (
+                f"empty query should return [], got {empty[:200]}"
+            )
         else:
             print(f"[smoke] doc {doc} not found, skipping tool calls", file=sys.stderr)
 

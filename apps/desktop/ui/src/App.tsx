@@ -90,6 +90,7 @@ export default function App() {
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [docPath, setDocPath] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
