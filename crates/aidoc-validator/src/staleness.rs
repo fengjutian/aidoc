@@ -178,7 +178,10 @@ mod tests {
     #[test]
     fn synced_when_commits_match() {
         let r = fake(&[("src/a.ts", CodeState::AtCommit(FULL.into()))]);
-        assert_eq!(classify(Some(FULL), "src/a.ts", Some(&r)), Staleness::Synced);
+        assert_eq!(
+            classify(Some(FULL), "src/a.ts", Some(&r)),
+            Staleness::Synced
+        );
     }
 
     #[test]

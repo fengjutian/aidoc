@@ -8,11 +8,14 @@ pub mod code_ref;
 pub mod identity;
 pub mod relation;
 pub mod revision;
+pub mod staleness;
 pub mod structure;
 
 use thiserror::Error;
 
 use aidoc_storage::Store;
+
+pub use staleness::{CodeState, GitCliResolver, GitResolver, Staleness, classify};
 
 #[derive(Debug, Error)]
 pub enum ValidationError {
@@ -77,14 +80,28 @@ pub trait Validator {
     fn check(&self, store: &Store, doc_id: &str) -> Result<Vec<Finding>, ValidationError>;
 }
 
-/// The built-in validator set (spec §40).
+/// The built-in validator set (spec §40). Hermetic — the code-ref check runs
+/// structural rules only (no git).
 pub fn default_validators() -> Vec<Box<dyn Validator>> {
+    validators_with(code_ref::CodeRefValidator::new())
+}
+
+/// The built-in validator set with §37 staleness enabled: the code-ref check
+/// classifies each `<code-ref>` against `resolver` and reports stale/conflict
+/// refs. Supply [`GitCliResolver`] to check a live checkout.
+pub fn default_validators_with_code_resolver(
+    resolver: Box<dyn staleness::GitResolver>,
+) -> Vec<Box<dyn Validator>> {
+    validators_with(code_ref::CodeRefValidator::with_resolver(resolver))
+}
+
+fn validators_with(code_ref: code_ref::CodeRefValidator) -> Vec<Box<dyn Validator>> {
     vec![
         Box::new(identity::IdentityValidator),
         Box::new(structure::StructureValidator),
         Box::new(relation::RelationValidator),
         Box::new(revision::RevisionValidator),
-        Box::new(code_ref::CodeRefValidator),
+        Box::new(code_ref),
     ]
 }
 

@@ -99,7 +99,13 @@ enum Cmd {
     },
 
     /// Validate identity / structure / relation / revision / code-ref rules.
-    Validate { path: String },
+    Validate {
+        path: String,
+        /// Repository path for code-ref staleness checks (spec §37). Omit to
+        /// skip git and run the hermetic structural validators only.
+        #[arg(long)]
+        repo: Option<String>,
+    },
 
     /// Export the current document to HTML or Markdown.
     Export {
@@ -201,7 +207,7 @@ fn main() -> Result<()> {
             target,
             reason,
         } => commands::revert::run(&path, &target, reason.as_deref()),
-        Cmd::Validate { path } => commands::validate::run(&path),
+        Cmd::Validate { path, repo } => commands::validate::run(&path, repo.as_deref()),
         Cmd::Export { path, out, format } => commands::export::run(&path, &out, &format),
         Cmd::Demo { path, export_html } => commands::demo::run(&path, export_html.as_deref()),
         Cmd::Example {
