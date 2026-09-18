@@ -62,6 +62,9 @@ pub struct Patch {
     /// Change the node's structural kind (e.g. `Section` → `Requirement`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<NodeKind>,
+    /// Reorder within sibling list. Smaller = earlier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<u32>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub attributes: indexmap::IndexMap<String, String>,
 }

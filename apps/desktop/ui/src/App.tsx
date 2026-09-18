@@ -21,6 +21,7 @@ import {
 
 import { CommandPalette } from "@/components/CommandPalette";
 import { RevisionDiff } from "@/components/RevisionDiff";
+import { SaveStatus } from "@/components/SaveStatus";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useSettings } from "@/hooks/useSettings";
@@ -87,6 +88,9 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "never">("never");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const refresh = async () => {
     if (!info) return;
@@ -182,10 +186,14 @@ export default function App() {
     try {
       await invoke<string>("update_node", { target, content: html });
       if (settings.autosave) {
+        setSaveState("saving");
         await invoke("save_doc");
+        setLastSavedAt(new Date());
+        setSaveState("saved");
       }
     } catch (e) {
       setError(String(e));
+      setSaveState("idle");
     }
   };
 
@@ -221,6 +229,19 @@ export default function App() {
     }
   };
 
+  const onMoveNode = async (target: string, newPosition: number) => {
+    setError(null);
+    try {
+      await invoke<string>("move_node", {
+        target,
+        newPosition,
+      });
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const onCopyId = async (id: string) => {
     try {
       await navigator.clipboard.writeText(id);
@@ -241,10 +262,14 @@ export default function App() {
 
   const onSave = async () => {
     setError(null);
+    setSaveState("saving");
     try {
       await invoke("save_doc");
+      setLastSavedAt(new Date());
+      setSaveState("saved");
     } catch (e) {
       setError(String(e));
+      setSaveState("idle");
     }
   };
 
@@ -344,6 +369,8 @@ export default function App() {
           <TooltipContent>Open command palette</TooltipContent>
         </Tooltip>
 
+        <SaveStatus state={saveState} lastSavedAt={lastSavedAt} />
+
         <ThemeToggle
           theme={theme.theme}
           resolved={theme.resolved}
@@ -422,14 +449,49 @@ export default function App() {
                   .sort((a, b) => a.position - b.position)
                   .map((n) => {
                     const Icon = kindIcon(n.kind);
+                    const dropTarget = dragOverId === n.id;
                     return (
-                      <li key={n.id}>
+                      <li
+                        key={n.id}
+                        onDragOver={(e) => {
+                          if (e.dataTransfer.types.includes("application/x-aidoc-node")) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            setDragOverId(n.id);
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (e.currentTarget === e.target) setDragOverId(null);
+                        }}
+                        onDrop={(e) => {
+                          const draggedId = e.dataTransfer.getData(
+                            "application/x-aidoc-node",
+                          );
+                          setDragOverId(null);
+                          if (!draggedId || draggedId === n.id) return;
+                          // Drop above target → take target's position;
+                          // dragged node will sort before it after refresh.
+                          const newPos = n.position;
+                          void onMoveNode(draggedId, newPos);
+                        }}
+                        className={cn(
+                          dropTarget && "ring-2 ring-primary/60 ring-offset-1 rounded-md",
+                        )}
+                      >
                         <ContextMenu>
                           <ContextMenuTrigger asChild>
                             <button
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData(
+                                  "application/x-aidoc-node",
+                                  n.id,
+                                );
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
                               onClick={() => setActiveId(n.id)}
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
+                                "flex w-full cursor-grab items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent active:cursor-grabbing",
                                 n.id === activeId &&
                                   "bg-accent font-medium text-accent-foreground",
                               )}

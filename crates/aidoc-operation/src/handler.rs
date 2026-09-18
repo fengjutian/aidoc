@@ -540,6 +540,9 @@ fn apply_patch_to_node(node: &mut Node, patch: &Patch) {
     if let Some(k) = patch.kind {
         node.kind = k;
     }
+    if let Some(p) = patch.position {
+        node.position = p;
+    }
     if let Some(title) = &patch.title {
         // For semantic nodes, title is the first text child — we just stash it
         // in content if content is empty.

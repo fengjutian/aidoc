@@ -33,10 +33,30 @@ pub fn render_html(
     );
     out.push_str(
         "  <style>\
-         .aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em}\
+         :root{color-scheme:light dark}\
+         body{font-family:ui-sans-serif,system-ui,sans-serif;margin:1.5rem auto;max-width:48rem;line-height:1.55;padding:0 1rem}\
+         .aidoc-diagram{font-family:monospace;background:#f8f8f8;padding:.5em;border-radius:4px;overflow:auto}\
          .aidoc-branch{background:#eef;border-left:4px solid #88c;\
                        padding:.5em 1em;margin:0 0 1em 0;font-family:monospace}\
          .aidoc-branch::before{content:\"branch: \"}\
+         h1,h2,h3,h4,h5,h6{margin-top:1.6em}\
+         pre{background:#f0f0f0;padding:.75em 1em;border-radius:4px;overflow:auto}\
+         blockquote{border-left:4px solid #ccc;margin:0;padding-left:1em;color:#555}\
+         [data-aidoc-type=\"requirement\"]{border-left:4px solid #2563eb;background:rgba(37,99,235,.07);padding:.5em 1em}\
+         [data-aidoc-type=\"decision\"]{border-left:4px solid #16a34a;background:rgba(22,163,74,.07);padding:.5em 1em}\
+         [data-aidoc-type=\"problem\"]{border-left:4px solid #dc2626;background:rgba(220,38,38,.07);padding:.5em 1em}\
+         [data-aidoc-type=\"solution\"]{border-left:4px solid #f59e0b;background:rgba(245,158,11,.07);padding:.5em 1em}\
+         @media (prefers-color-scheme: dark){\
+           body{color:#e6e6e6}\
+           .aidoc-diagram{background:#262626}\
+           .aidoc-branch{background:#2a2f44;border-left-color:#5b6dab}\
+           pre{background:#1e1e1e;color:#d4d4d4}\
+           blockquote{border-left-color:#444;color:#aaa}\
+           [data-aidoc-type=\"requirement\"]{border-left-color:#3b82f6;background:rgba(59,130,246,.12)}\
+           [data-aidoc-type=\"decision\"]{border-left-color:#22c55e;background:rgba(34,197,94,.12)}\
+           [data-aidoc-type=\"problem\"]{border-left-color:#ef4444;background:rgba(239,68,68,.12)}\
+           [data-aidoc-type=\"solution\"]{border-left-color:#f59e0b;background:rgba(245,158,11,.12)}\
+         }\
          </style>\n",
     );
     out.push_str("</head>\n<body>\n");

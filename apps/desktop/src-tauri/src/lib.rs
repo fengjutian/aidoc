@@ -318,6 +318,31 @@ fn set_node_kind(
     Ok(out.revision.as_str().to_owned())
 }
 
+#[tauri::command]
+fn move_node(
+    state: tauri::State<'_, AppState>,
+    target: String,
+    new_position: u32,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let target_id = NodeId::from_validated(&target);
+    let mut patch = Patch::default();
+    patch.position = Some(new_position);
+    let op = build_op(
+        &s.store,
+        &doc_id,
+        OperationType::Move,
+        Some(target_id),
+        Some(patch),
+        "UI reorder",
+    )?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
 #[derive(Debug, Serialize)]
 struct ChangeDto {
     node: String,
@@ -443,6 +468,7 @@ pub fn run() {
             delete_node,
             list_changes,
             set_node_kind,
+            move_node,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");
