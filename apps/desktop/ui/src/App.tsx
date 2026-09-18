@@ -1,7 +1,29 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  AlertCircle,
+  Clock,
+  Download,
+  FilePlus,
+  FileText,
+  FolderOpen,
+  Hash,
+  Save,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
 
-import { NodeEditor } from "./NodeEditor";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { NodeEditor } from "@/NodeEditor";
 
 interface Info {
   doc_id: string;
@@ -26,6 +48,13 @@ interface RevisionRow {
   message: string | null;
 }
 
+const kindIcon = (kind: string) => {
+  // All AIDoc node kinds render with FileText by default; surface a few
+  // distinguishing glyphs without coupling to the full kind taxonomy.
+  if (kind === "section" || kind === "heading") return FileText;
+  return FileText;
+};
+
 export default function App() {
   const [info, setInfo] = useState<Info | null>(null);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
@@ -44,7 +73,9 @@ export default function App() {
       ]);
       setNodes(n);
       setRevs(r);
-      setInfo((prev) => (prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev));
+      setInfo((prev) =>
+        prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev,
+      );
     } catch (e) {
       setError(String(e));
     }
@@ -52,6 +83,7 @@ export default function App() {
 
   useEffect(() => {
     void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.doc_id]);
 
   const onInit = async () => {
@@ -109,7 +141,6 @@ export default function App() {
     setError(null);
     try {
       const html = await invoke<string>("export_html");
-      // Open the exported HTML in a new tab.
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
@@ -120,32 +151,50 @@ export default function App() {
 
   if (!info) {
     return (
-      <div className="topbar" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <h1>AIDoc Desktop</h1>
-        <p style={{ margin: 0, opacity: 0.7 }}>
-          No document open. Initialize a new <code>.aidoc</code> or open an existing one.
+      <div className="flex h-full flex-col items-center justify-center gap-6 bg-background p-8">
+        <div className="flex items-center gap-3">
+          <Sparkles className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-semibold tracking-tight">AIDoc Desktop</h1>
+        </div>
+        <p className="max-w-md text-center text-sm text-muted-foreground">
+          No document open. Initialize a new <code className="rounded bg-muted px-1.5 py-0.5">.aidoc</code>{" "}
+          or open an existing one.
         </p>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <div className="flex w-full max-w-xl flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
           <input
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
             placeholder="examples/demo.aidoc"
             value={initPath}
             onChange={(e) => setInitPath(e.target.value)}
-            style={{ flex: 1, padding: "0.3rem 0.5rem" }}
           />
           <input
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
             placeholder="Document title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{ flex: 1, padding: "0.3rem 0.5rem" }}
           />
-          <button onClick={onInit} disabled={!initPath}>
-            init
-          </button>
-          <button onClick={onOpen} disabled={!initPath}>
-            open
-          </button>
+          <div className="flex gap-2">
+            <Button onClick={onInit} disabled={!initPath} className="flex-1">
+              <FilePlus className="mr-2 h-4 w-4" />
+              Init
+            </Button>
+            <Button
+              onClick={onOpen}
+              disabled={!initPath}
+              variant="outline"
+              className="flex-1"
+            >
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Open
+            </Button>
+          </div>
         </div>
-        {error && <div className="error">{error}</div>}
+        {error && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            {error}
+          </div>
+        )}
       </div>
     );
   }
@@ -153,53 +202,123 @@ export default function App() {
   const active = nodes.find((n) => n.id === activeId);
 
   return (
-    <>
-      <div className="topbar">
-        <h1>
-          {info.title} <span style={{ opacity: 0.5 }}>· head={info.head_revision}</span>
+    <TooltipProvider delayDuration={300}>
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <h1 className="mr-auto text-sm font-semibold">
+          {info.title}
+          <span className="ml-2 font-normal text-muted-foreground">
+            · head={info.head_revision}
+          </span>
         </h1>
-        <button onClick={onSave}>save</button>
-        <button onClick={onExportHtml}>export html</button>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <div className="main">
-        <aside className="tree">
-          <h3>Nodes</h3>
-          <ul>
-            {nodes
-              .slice()
-              .sort((a, b) => a.position - b.position)
-              .map((n) => (
-                <li
-                  key={n.id}
-                  className={n.id === activeId ? "active" : ""}
-                  onClick={() => setActiveId(n.id)}
-                >
-                  {n.id}
-                  <span className="kind">{n.kind}</span>
-                </li>
-              ))}
-          </ul>
-          <div className="history">
-            <strong>History</strong>
-            <ol style={{ paddingLeft: "1.2rem" }}>
-              {revs.map((r) => (
-                <li key={r.id}>
-                  <code>{r.id}</code> {r.message ?? ""}{" "}
-                  <button
-                    style={{ fontSize: "0.7rem", padding: "0 0.3rem", marginLeft: "0.3rem" }}
-                    onClick={() => onRevert(r.id)}
-                    disabled={r.id === info.head_revision}
-                  >
-                    revert
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline" onClick={onSave}>
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              Save
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Persist current state to .aidoc</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline" onClick={onExportHtml}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export HTML
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Render document to HTML and open in browser</TooltipContent>
+        </Tooltip>
+      </header>
+
+      {error && (
+        <div className="flex items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </div>
+      )}
+
+      <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr]">
+        <aside className="flex min-h-0 flex-col border-r bg-muted/30">
+          <ScrollArea className="flex-1">
+            <div className="p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <FileText className="h-3.5 w-3.5" />
+                Nodes
+              </div>
+              <ul className="space-y-0.5">
+                {nodes
+                  .slice()
+                  .sort((a, b) => a.position - b.position)
+                  .map((n) => {
+                    const Icon = kindIcon(n.kind);
+                    return (
+                      <li key={n.id}>
+                        <button
+                          onClick={() => setActiveId(n.id)}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
+                            n.id === activeId && "bg-accent font-medium text-accent-foreground",
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{n.id}</span>
+                          <span className="ml-auto text-[10px] uppercase text-muted-foreground">
+                            {n.kind}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+
+              <Separator className="my-3" />
+
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                History
+              </div>
+              <ol className="space-y-1">
+                {revs.map((r) => {
+                  const isHead = r.id === info.head_revision;
+                  return (
+                    <li
+                      key={r.id}
+                      className="flex items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      <Hash className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <code className="font-mono">{r.id}</code>
+                      <span className="truncate text-muted-foreground">
+                        {r.message ?? ""}
+                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="ml-auto h-6 w-6"
+                            onClick={() => onRevert(r.id)}
+                            disabled={isHead}
+                          >
+                            <Undo2 className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isHead ? "Already at head" : "Revert to this revision"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </ScrollArea>
         </aside>
-        <main className="editor">
-          <div className="pane">
+
+        <main className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex-1 overflow-auto p-6">
             {active ? (
               <NodeEditor
                 key={active.id}
@@ -208,11 +327,13 @@ export default function App() {
                 onChange={(html) => onUpdate(active.id, html)}
               />
             ) : (
-              <p style={{ opacity: 0.6 }}>Select a node from the tree to edit.</p>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Select a node from the tree to edit.
+              </div>
             )}
           </div>
         </main>
       </div>
-    </>
+    </TooltipProvider>
   );
 }
