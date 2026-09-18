@@ -681,6 +681,11 @@ export default function App() {
         onOpenChange={setAiOpen}
         settings={settings}
         docPath={docPath}
+        nodeIds={nodes.map((n) => n.id)}
+        onJumpToNode={(id) => {
+          setActiveId(id);
+          setAiOpen(false);
+        }}
       />
     </TooltipProvider>
   );
