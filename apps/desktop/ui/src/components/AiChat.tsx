@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Download, Eraser, Loader2, Send, Sparkles } from "lucide-react";
 
@@ -85,6 +85,19 @@ export function AiChat({
   const [prompt, setPrompt] = useState("");
   const [history, setHistory] = useState<ChatTurn[]>(loadHistory);
   const [pending, setPending] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [suggestion, setSuggestion] = useState<{
+    start: number;
+    end: number;
+    prefix: string;
+    items: string[];
+    index: number;
+  } | null>(null);
+
+  const sortedNodeIds = useMemo(
+    () => [...nodeIds].sort((a, b) => a.localeCompare(b)),
+    [nodeIds],
+  );
 
   useEffect(() => {
     if (history.length === 0) {
@@ -105,7 +118,65 @@ export function AiChat({
   useEffect(() => {
     if (!open) return;
     setPrompt("");
+    setSuggestion(null);
   }, [open]);
+
+  // Recompute `@nodeId` autocomplete suggestions as the user types.
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setSuggestion(null);
+      return;
+    }
+    const caret = ta.selectionStart ?? prompt.length;
+    // Walk back from caret to find the most recent `@token` (no whitespace).
+    const before = prompt.slice(0, caret);
+    const m = /(^|\s)@([\w.-]*)$/.exec(before);
+    if (!m) {
+      setSuggestion(null);
+      return;
+    }
+    const tokenStart = caret - m[2].length;
+    const prefix = m[2].toLowerCase();
+    const items = sortedNodeIds
+      .filter((id) => id.toLowerCase().startsWith(prefix))
+      .slice(0, 6);
+    if (items.length === 0) {
+      setSuggestion(null);
+      return;
+    }
+    setSuggestion((prev) =>
+      prev && prev.start === tokenStart && prev.prefix === m[2]
+        ? { ...prev, items, index: Math.min(prev.index, items.length - 1) }
+        : { start: tokenStart, end: caret, prefix: m[2], items, index: 0 },
+    );
+  }, [prompt, sortedNodeIds]);
+
+  const applySuggestion = (id: string) => {
+    if (!suggestion) return;
+    const before = prompt.slice(0, suggestion.start);
+    const after = prompt.slice(suggestion.end);
+    const inserted = `@${id} `;
+    const next = before + inserted + after;
+    setPrompt(next);
+    setSuggestion(null);
+    // Restore caret right after the inserted node id.
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const caret = before.length + inserted.length;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
+    });
+  };
+
+  const moveSuggestion = (delta: number) => {
+    if (!suggestion) return;
+    const next =
+      (suggestion.index + delta + suggestion.items.length) %
+      suggestion.items.length;
+    setSuggestion({ ...suggestion, index: next });
+  };
 
   const clear = () => {
     setHistory([]);
@@ -259,9 +330,37 @@ export function AiChat({
           }}
         >
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
+              if (suggestion) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  moveSuggestion(1);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  moveSuggestion(-1);
+                  return;
+                }
+                if (
+                  e.key === "Enter" &&
+                  !e.metaKey &&
+                  !e.ctrlKey &&
+                  !e.shiftKey
+                ) {
+                  e.preventDefault();
+                  applySuggestion(suggestion.items[suggestion.index]);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setSuggestion(null);
+                  return;
+                }
+              }
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 void send();

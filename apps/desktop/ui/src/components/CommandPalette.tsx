@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  AlertOctagon,
   ArrowRight,
   CheckCircle2,
   Download,
@@ -25,6 +26,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 interface NodeRow {
   id: string;
@@ -47,6 +49,17 @@ interface Info {
   title: string;
 }
 
+interface ValidationFinding {
+  category: string;
+  message: string;
+}
+
+interface ValidationReport {
+  clean: boolean;
+  total: number;
+  findings: ValidationFinding[];
+}
+
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,6 +69,7 @@ interface CommandPaletteProps {
   onSelectNode: (id: string) => void;
   onSave: () => void;
   onExportHtml: () => void;
+  onExportMarkdown: () => void;
   onRevert: (revId: string) => void;
   onCreateNode: (id: string, kind: string, content: string) => void;
   onDeleteNode: (target: string) => void;
@@ -80,6 +94,7 @@ export function CommandPalette({
   onSelectNode,
   onSave,
   onExportHtml,
+  onExportMarkdown,
   onRevert,
   onCreateNode,
   onDeleteNode,
@@ -87,19 +102,32 @@ export function CommandPalette({
   const [validationStatus, setValidationStatus] = useState<
     "idle" | "running" | "passed" | "failed"
   >("idle");
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(
+    null,
+  );
 
   useEffect(() => {
     // Reset transient state when palette closes.
-    if (!open) setValidationStatus("idle");
+    if (!open) {
+      setValidationStatus("idle");
+      setValidationReport(null);
+    }
   }, [open]);
 
   const runValidate = async () => {
     setValidationStatus("running");
+    setValidationReport(null);
     try {
-      await invoke<string>("validate_aidoc");
-      setValidationStatus("passed");
+      const report = await invoke<ValidationReport>("validate_aidoc");
+      setValidationReport(report);
+      setValidationStatus(report.clean ? "passed" : "failed");
     } catch (e) {
       setValidationStatus("failed");
+      setValidationReport({
+        clean: false,
+        total: 0,
+        findings: [{ category: "error", message: String(e) }],
+      });
       // eslint-disable-next-line no-console
       console.error("validate failed:", e);
     }
@@ -125,6 +153,17 @@ export function CommandPalette({
       shortcut: "⌘ E",
       run: () => {
         onExportHtml();
+        onOpenChange(false);
+      },
+    },
+    {
+      id: "export-markdown",
+      label: "Export Markdown",
+      group: "Document",
+      icon: Download,
+      shortcut: "⌘ ⇧ E",
+      run: () => {
+        onExportMarkdown();
         onOpenChange(false);
       },
     },
@@ -288,6 +327,48 @@ export function CommandPalette({
             </CommandItem>
           ))}
         </CommandGroup>
+
+        {validationReport && (
+          <>
+            <CommandSeparator />
+            <CommandGroup
+              heading={`Findings (${validationReport.findings.length})`}
+            >
+              {validationReport.clean ? (
+                <CommandItem value="validate passed clean" disabled>
+                  <CheckCircle2 className="text-emerald-500" />
+                  <span className="text-emerald-600">
+                    All checks passed.
+                  </span>
+                </CommandItem>
+              ) : (
+                validationReport.findings.map((f, i) => (
+                  <CommandItem
+                    key={`${f.category}-${i}`}
+                    value={`finding ${f.category} ${f.message}`}
+                    onSelect={() => {
+                      onOpenChange(false);
+                    }}
+                    className={cn(
+                      "items-start",
+                      f.category === "error" && "text-destructive",
+                    )}
+                  >
+                    <AlertOctagon className="mt-0.5 shrink-0 text-destructive" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {f.category}
+                      </div>
+                      <div className="whitespace-pre-wrap break-words">
+                        {f.message}
+                      </div>
+                    </div>
+                  </CommandItem>
+                ))
+              )}
+            </CommandGroup>
+          </>
+        )}
       </CommandList>
     </CommandDialog>
   );

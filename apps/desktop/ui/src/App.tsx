@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
   Clock,
@@ -10,6 +11,7 @@ import {
   FilePlus,
   FileText,
   FolderOpen,
+  FolderSearch,
   Hash,
   Plus,
   Save,
@@ -94,6 +96,8 @@ export default function App() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<NodeRow[] | null>(null);
 
   const refresh = async () => {
     if (!info) return;
@@ -123,9 +127,9 @@ export default function App() {
     document.documentElement.style.setProperty("--editor-font-size", px);
   }, [settings.fontSize]);
 
-  // Global keyboard shortcuts: ⌘K palette, ⌘S save, ⌘E export, ⌘N new node.
-  // Skip when focus is inside an editable field so the OS / Radix can still
-  // handle native text input.
+  // Global keyboard shortcuts: ⌘K palette, ⌘S save, ⌘E export HTML,
+  // ⌘⇧E export Markdown, ⌘N new node. Skip when focus is inside an editable
+  // field so the OS / Radix can still handle native text input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -150,7 +154,8 @@ export default function App() {
         void onSave();
       } else if (k === "e") {
         e.preventDefault();
-        void onExportHtml();
+        if (e.shiftKey) void onExportMarkdown();
+        else void onExportHtml();
       } else if (k === "n") {
         e.preventDefault();
         const next = `node-${nodes.length + 1}`;
@@ -161,27 +166,73 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [nodes.length]);
 
-  const onInit = async () => {
+  // Native file picker — populates the path field on the welcome screen so
+  // users don't have to hand-type a Windows path. Falls back to whatever
+  // they typed if the dialog is cancelled.
+  const pickOpenPath = async (): Promise<string | null> => {
+    try {
+      const picked = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "AIDoc", extensions: ["aidoc"] }],
+      });
+      return typeof picked === "string" ? picked : null;
+    } catch (e) {
+      setError(String(e));
+      return null;
+    }
+  };
+
+  const pickSavePath = async (defaultName: string): Promise<string | null> => {
+    try {
+      const picked = await saveDialog({
+        defaultPath: defaultName,
+        filters: [{ name: "AIDoc", extensions: ["aidoc"] }],
+      });
+      return picked ?? null;
+    } catch (e) {
+      setError(String(e));
+      return null;
+    }
+  };
+
+  const openFromDialog = async () => {
+    setError(null);
+    const picked = await pickOpenPath();
+    if (!picked) return;
+    await onOpen(picked);
+  };
+
+  const initFromDialog = async () => {
+    setError(null);
+    const defaultName =
+      (title || "untitled").toLowerCase().replace(/\s+/g, "-") + ".aidoc";
+    const picked = await pickSavePath(defaultName);
+    if (!picked) return;
+    await onInit(picked);
+  };
+
+  const onInit = async (path: string) => {
     setError(null);
     try {
       const i = await invoke<Info>("init_doc", {
-        path: initPath,
+        path,
         docId: title.toLowerCase().replace(/\s+/g, "-") || "demo",
         title: title || "Untitled",
       });
       setInfo(i);
-      setDocPath(initPath);
+      setDocPath(path);
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const onOpen = async () => {
+  const onOpen = async (path: string) => {
     setError(null);
     try {
-      const i = await invoke<Info>("open_doc", { path: initPath });
+      const i = await invoke<Info>("open_doc", { path });
       setInfo(i);
-      setDocPath(initPath);
+      setDocPath(path);
     } catch (e) {
       setError(String(e));
     }
@@ -292,6 +343,24 @@ export default function App() {
     }
   };
 
+  const onExportMarkdown = async () => {
+    setError(null);
+    try {
+      const md = await invoke<string>("export_markdown");
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${info?.title || "untitled"}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   if (!info) {
     return (
       <div className="relative flex h-full flex-col items-center justify-center gap-6 bg-background p-8">
@@ -311,12 +380,27 @@ export default function App() {
           or open an existing one.
         </p>
         <div className="flex w-full max-w-xl flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
-          <input
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            placeholder="examples/demo.aidoc"
-            value={initPath}
-            onChange={(e) => setInitPath(e.target.value)}
-          />
+          <div className="flex gap-2">
+            <input
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="examples/demo.aidoc"
+              value={initPath}
+              onChange={(e) => setInitPath(e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              aria-label="Browse for .aidoc file"
+              onClick={async () => {
+                const picked = await pickOpenPath();
+                if (picked) setInitPath(picked);
+              }}
+            >
+              <FolderSearch className="h-4 w-4" />
+            </Button>
+          </div>
           <input
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
             placeholder="Document title"
@@ -324,18 +408,13 @@ export default function App() {
             onChange={(e) => setTitle(e.target.value)}
           />
           <div className="flex gap-2">
-            <Button onClick={onInit} disabled={!initPath} className="flex-1">
+            <Button onClick={initFromDialog} className="flex-1">
               <FilePlus className="mr-2 h-4 w-4" />
-              Init
+              New document…
             </Button>
-            <Button
-              onClick={onOpen}
-              disabled={!initPath}
-              variant="outline"
-              className="flex-1"
-            >
+            <Button onClick={openFromDialog} variant="outline" className="flex-1">
               <FolderOpen className="mr-2 h-4 w-4" />
-              Open
+              Open file…
             </Button>
           </div>
         </div>
@@ -414,6 +493,53 @@ export default function App() {
 
         <Tooltip>
           <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-muted-foreground"
+              onClick={openFromDialog}
+            >
+              <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+              Open
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open a different .aidoc file</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-muted-foreground"
+              onClick={async () => {
+                const defaultName =
+                  (info?.title || "untitled").toLowerCase().replace(/\s+/g, "-") + ".aidoc";
+                const picked = await pickSavePath(defaultName);
+                if (!picked) return;
+                setError(null);
+                try {
+                  const i = await invoke<Info>("init_doc", {
+                    path: picked,
+                    docId: info?.doc_id ?? "demo",
+                    title: info?.title ?? "Untitled",
+                  });
+                  setInfo(i);
+                  setDocPath(picked);
+                } catch (e) {
+                  setError(String(e));
+                }
+              }}
+            >
+              <FilePlus className="mr-1.5 h-3.5 w-3.5" />
+              New
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Create a new .aidoc file (current doc will be discarded)</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
             <Button size="sm" variant="outline" onClick={onSave}>
               <Save className="mr-1.5 h-3.5 w-3.5" />
               Save
@@ -430,6 +556,16 @@ export default function App() {
             </Button>
           </TooltipTrigger>
           <TooltipContent>Render document to HTML and open in browser</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="sm" variant="outline" onClick={onExportMarkdown}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              Export MD
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Render document as Markdown and save as .md</TooltipContent>
         </Tooltip>
       </header>
 
@@ -650,6 +786,9 @@ export default function App() {
         }}
         onExportHtml={() => {
           void onExportHtml();
+        }}
+        onExportMarkdown={() => {
+          void onExportMarkdown();
         }}
         onRevert={(id) => {
           void onRevert(id);

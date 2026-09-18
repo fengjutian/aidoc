@@ -36,8 +36,11 @@ importers:
         specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@18.3.1)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tauri-apps/api':
-        specifier: ^2.1.1
+        specifier: ^2.11.0
         version: 2.11.1
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.7.0
+        version: 2.7.3
       '@tiptap/extension-link':
         specifier: ^2.10.3
         version: 2.27.3(@tiptap/core@2.27.3(@tiptap/pm@2.27.3))(@tiptap/pm@2.27.3)
@@ -928,6 +931,9 @@ packages:
 
   '@tauri-apps/api@2.11.1':
     resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
+
+  '@tauri-apps/plugin-dialog@2.7.3':
+    resolution: {integrity: sha512-CRgE+7TP4tvq9MjBU6f04NLTFIqVMLKHk3hAqlhil00ngK9ACTrXPH3oHpKMProxILodd3YjBoKbMwSI4IEcfA==}
 
   '@tiptap/core@2.27.3':
     resolution: {integrity: sha512-a5LfRbLpfaGI3hbL/LPHUYHI0I+FQHdSHsy8L4YnVIuu3hXcm3QZgkWbpEGf8hCz8krk6zEiu0+iFOjTySU2FA==}
@@ -2813,6 +2819,10 @@ snapshots:
     optional: true
 
   '@tauri-apps/api@2.11.1': {}
+
+  '@tauri-apps/plugin-dialog@2.7.3':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
 
   '@tiptap/core@2.27.3(@tiptap/pm@2.27.3)':
     dependencies:
