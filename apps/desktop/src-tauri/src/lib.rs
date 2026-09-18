@@ -181,7 +181,8 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
         .map_err(err)?
         .ok_or_else(|| err("doc missing"))?;
     let nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
-    Ok(aidoc::exporter::export_html(&doc, &nodes))
+    let branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
+    Ok(aidoc::exporter::export_html(&doc, &nodes, branch.as_deref()))
 }
 
 // ---------------- helpers ----------------

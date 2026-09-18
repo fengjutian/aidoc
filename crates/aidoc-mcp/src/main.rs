@@ -248,7 +248,8 @@ async fn export_html(state: Arc<ServerState>) -> Result<String, String> {
             .str_err()?
             .ok_or_else(|| "document row missing".to_string())?;
         let nodes = crud::list_nodes(s.store.conn(), doc_id).str_err()?;
-        Ok(core_export_html(&doc, &nodes))
+        let branch = crud::head_branch(s.store.conn(), doc_id).str_err()?;
+        Ok(core_export_html(&doc, &nodes, branch.as_deref()))
     })
 }
 

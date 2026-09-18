@@ -15,5 +15,24 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: true,
+    // Manual chunking keeps the initial app shell small so first paint only
+    // pulls in React + the editor. Heavy optional libs (mermaid, etc.) get
+    // their own vendor chunks and only load when actually used.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          tiptap: [
+            "@tiptap/react",
+            "@tiptap/pm",
+            "@tiptap/starter-kit",
+            "@tiptap/extension-link",
+            "@tiptap/extension-placeholder",
+          ],
+          mermaid: ["mermaid"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 800,
   },
 });

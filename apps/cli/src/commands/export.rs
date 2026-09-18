@@ -19,7 +19,8 @@ pub fn run(path: &str, out: &str, format: &str) -> Result<()> {
             let mut d = doc.clone();
             // re-stamp title from manifest for clarity
             d.title = m.document.title.clone();
-            aidoc_renderer_alt(&d, &nodes, &rels)
+            let branch = crud::head_branch(s.store.conn(), &doc_id)?;
+            aidoc_renderer_alt(&d, &nodes, &rels, branch.as_deref())
         }
         "md" | "markdown" => exporter::export_markdown(&doc, &nodes),
         other => return Err(anyhow!("unknown format: {other} (use html or md)")),
@@ -31,6 +32,11 @@ pub fn run(path: &str, out: &str, format: &str) -> Result<()> {
 }
 
 // alias since aidoc::exporter doesn't take relations yet
-fn aidoc_renderer_alt(doc: &Document, nodes: &[aidoc::Node], _rels: &[aidoc::Relation]) -> String {
-    exporter::export_html(doc, nodes)
+fn aidoc_renderer_alt(
+    doc: &Document,
+    nodes: &[aidoc::Node],
+    _rels: &[aidoc::Relation],
+    branch: Option<&str>,
+) -> String {
+    exporter::export_html(doc, nodes, branch)
 }
