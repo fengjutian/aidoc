@@ -224,7 +224,7 @@ fn main() -> Result<()> {
     // only use 8 bits for $? and 126/127 are reserved for exec / not-found.
     if let Err(e) = res {
         if let Some(failure) = e.downcast_ref::<commands::validate::ValidateFailure>() {
-            let code = failure.count.min(125).max(1) as i32;
+            let code = failure.count.clamp(1, 125) as i32;
             std::process::exit(code);
         }
         return Err(e);
