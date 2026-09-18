@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import type { Settings } from "@/hooks/useSettings";
 
 interface AiChatProps {
@@ -183,21 +184,38 @@ export function AiChat({
     setPrompt("");
   };
 
-  const exportMarkdown = () => {
+  const exportConversation = (fmt: "md" | "json") => {
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-    const lines: string[] = [];
-    lines.push(`# AIDoc AI Chat — ${stamp}`);
-    if (docPath) lines.push(`\n_Document: \`${docPath}\`_\n`);
-    for (const t of history) {
-      if (t.role === "user") lines.push(`\n## You\n\n${t.content}\n`);
-      else if (t.role === "assistant") lines.push(`\n## AIDoc AI\n\n${t.content}\n`);
-      else lines.push(`\n## ⚠ Error\n\n\`\`\`\n${t.content}\n\`\`\`\n`);
+    const day = new Date().toISOString().slice(0, 10);
+    if (fmt === "md") {
+      const lines: string[] = [];
+      lines.push(`# AIDoc AI Chat — ${stamp}`);
+      if (docPath) lines.push(`\n_Document: \`${docPath}\`_\n`);
+      for (const t of history) {
+        if (t.role === "user") lines.push(`\n## You\n\n${t.content}\n`);
+        else if (t.role === "assistant") lines.push(`\n## AIDoc AI\n\n${t.content}\n`);
+        else lines.push(`\n## ⚠ Error\n\n\`\`\`\n${t.content}\n\`\`\`\n`);
+      }
+      const blob = new Blob([lines.join("")], { type: "text/markdown;charset=utf-8" });
+      download(blob, `aidoc-chat-${day}.md`);
+    } else {
+      const payload = {
+        exported_at: stamp,
+        doc_path: docPath,
+        turns: history,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      download(blob, `aidoc-chat-${day}.json`);
     }
-    const blob = new Blob([lines.join("")], { type: "text/markdown;charset=utf-8" });
+  };
+
+  const download = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `aidoc-chat-${new Date().toISOString().slice(0, 10)}.md`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -260,11 +278,21 @@ export function AiChat({
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={exportMarkdown}
+                onClick={() => exportConversation("md")}
                 aria-label="Export as Markdown"
               >
                 <Download className="mr-1 h-3 w-3" />
-                Export
+                MD
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => exportConversation("json")}
+                aria-label="Export as JSON"
+              >
+                <Download className="mr-1 h-3 w-3" />
+                JSON
               </Button>
               <Button
                 size="sm"
@@ -323,7 +351,7 @@ export function AiChat({
         </ScrollArea>
 
         <form
-          className="flex items-end gap-2 border-t bg-muted/30 px-5 py-3"
+          className="relative flex items-end gap-2 border-t bg-muted/30 px-5 py-3"
           onSubmit={(e) => {
             e.preventDefault();
             void send();
@@ -405,7 +433,6 @@ export function AiChat({
               </div>
             </div>
           )}
-          />
           <Button type="submit" disabled={pending || !prompt.trim()}>
             {pending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

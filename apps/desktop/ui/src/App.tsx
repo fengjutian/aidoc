@@ -611,8 +611,68 @@ export default function App() {
 
       <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr]">
         <aside className="flex min-h-0 flex-col border-r bg-muted/30">
+          <div className="border-b p-2">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-7 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="Search nodes…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSearchQuery("");
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                  onClick={() => setSearchQuery("")}
+                >
+                  <XIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
           <ScrollArea className="flex-1">
             <div className="p-3">
+              {searchQuery.trim() && searchResults ? (
+                <>
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <SearchIcon className="h-3.5 w-3.5" />
+                    Results ({searchResults.length})
+                  </div>
+                  {searchResults.length === 0 ? (
+                    <div className="rounded-md border border-dashed bg-background/50 px-3 py-6 text-center text-xs text-muted-foreground">
+                      No node matches &ldquo;{searchQuery.trim()}&rdquo;.
+                    </div>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {searchResults.map((n) => (
+                        <li key={n.id}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveId(n.id)}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
+                              n.id === activeId &&
+                                "bg-accent font-medium text-accent-foreground",
+                            )}
+                          >
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{n.id}</span>
+                            <span className="ml-auto text-[10px] uppercase text-muted-foreground">
+                              {n.kind}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <>
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <FileText className="h-3.5 w-3.5" />
                 Nodes
@@ -727,6 +787,8 @@ export default function App() {
                     );
                   })}
               </ul>
+                </>
+              )}
 
               <Separator className="my-3" />
 
