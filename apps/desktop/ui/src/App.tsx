@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Eye,
   FilePlus,
   FileText,
   FolderOpen,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { CommandPalette } from "@/components/CommandPalette";
+import { RevisionDiff } from "@/components/RevisionDiff";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -76,6 +78,7 @@ export default function App() {
   const [initPath, setInitPath] = useState("");
   const [title, setTitle] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [diffRev, setDiffRev] = useState<string | null>(null);
 
   const refresh = async () => {
     if (!info) return;
@@ -405,29 +408,44 @@ export default function App() {
                   return (
                     <li
                       key={r.id}
-                      className="flex items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-accent"
                     >
                       <Hash className="h-3 w-3 shrink-0 text-muted-foreground" />
                       <code className="font-mono">{r.id}</code>
                       <span className="truncate text-muted-foreground">
                         {r.message ?? ""}
                       </span>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="ml-auto h-6 w-6"
-                            onClick={() => onRevert(r.id)}
-                            disabled={isHead}
-                          >
-                            <Undo2 className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {isHead ? "Already at head" : "Revert to this revision"}
-                        </TooltipContent>
-                      </Tooltip>
+                      <div className="ml-auto flex items-center gap-0.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6"
+                              onClick={() => setDiffRev(r.id)}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>View diff</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6"
+                              onClick={() => onRevert(r.id)}
+                              disabled={isHead}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isHead ? "Already at head" : "Revert to this revision"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </li>
                   );
                 })}
@@ -477,6 +495,13 @@ export default function App() {
         }}
         onDeleteNode={(target) => {
           void onDeleteNode(target);
+        }}
+      />
+
+      <RevisionDiff
+        revId={diffRev}
+        onClose={() => {
+          setDiffRev(null);
         }}
       />
     </TooltipProvider>

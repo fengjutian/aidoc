@@ -4,9 +4,9 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
-    Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch, Provenance, Revision,
-    RevisionId, apply_operation, create_package, open_package, revert_to, save_package,
-    validator::{ValidationCategory, validate as core_validate},
+    ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
+    Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
+    save_package, validator::{ValidationCategory, validate as core_validate},
 };
 use aidoc_storage::{Store, crud};
 
@@ -271,6 +271,45 @@ fn delete_node(state: tauri::State<'_, AppState>, target: String) -> Result<Stri
     Ok(out.revision.as_str().to_owned())
 }
 
+#[derive(Debug, Serialize)]
+struct ChangeDto {
+    node: String,
+    change_type: String,
+    summary: Option<String>,
+    before_hash: Option<String>,
+    after_hash: Option<String>,
+}
+
+#[tauri::command]
+fn list_changes(state: tauri::State<'_, AppState>, rev_id: String) -> Result<Vec<ChangeDto>, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let changes = crud::list_changes_for_revision(s.store.conn(), &doc_id, &rev_id).map_err(err)?;
+    Ok(changes
+        .into_iter()
+        .map(|c| ChangeDto {
+            node: c.node.as_str().to_owned(),
+            change_type: match c.change_type {
+                ChangeType::ContentUpdate => "content-update",
+                ChangeType::Create => "create",
+                ChangeType::Delete => "delete",
+                ChangeType::Move => "move",
+                ChangeType::Rename => "rename",
+                ChangeType::Split => "split",
+                ChangeType::Merge => "merge",
+                ChangeType::Revert => "revert",
+                ChangeType::RelationAdd => "relation-add",
+                ChangeType::RelationRemove => "relation-remove",
+            }
+            .to_string(),
+            summary: c.summary,
+            before_hash: c.before.map(|h| h.hash),
+            after_hash: c.after.map(|h| h.hash),
+        })
+        .collect())
+}
+
 #[tauri::command]
 fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let g = state.inner.lock().unwrap();
@@ -355,6 +394,7 @@ pub fn run() {
             validate_aidoc,
             create_node,
             delete_node,
+            list_changes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");
