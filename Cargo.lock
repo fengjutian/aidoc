@@ -102,6 +102,7 @@ dependencies = [
  "aidoc-validator",
  "anyhow",
  "chrono",
+ "futures",
  "rmcp",
  "serde",
  "serde_json",

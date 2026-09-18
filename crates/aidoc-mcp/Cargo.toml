@@ -18,10 +18,8 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util"] }
+futures = "0.3"
+rmcp = { version = "0.3", features = ["server", "transport-io"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # placeholder so the crate compiles on wasm targets (unused on x86_64).
-
-[dependencies.rmcp]
-version = "0.3"
-features = ["server", "transport-io", "macros"]
