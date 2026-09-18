@@ -65,6 +65,31 @@ CREATE TABLE IF NOT EXISTS revisions (
 
 CREATE INDEX IF NOT EXISTS idx_revisions_head ON revisions(doc_id, is_head);
 
+-- v0.1 branching support (spec §34-§35). A revision may belong to a named
+-- branch; None means "main". Stored in a side-table so existing schemas don't
+-- need DDL migration to pick it up.
+CREATE TABLE IF NOT EXISTS revision_branches (
+    doc_id    TEXT NOT NULL,
+    revision  TEXT NOT NULL,
+    branch    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (doc_id, revision),
+    FOREIGN KEY (doc_id, revision) REFERENCES revisions(doc_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_revision_branches_branch
+    ON revision_branches(doc_id, branch);
+
+-- v0.1 merge support (spec §35): a merge revision can have multiple parents.
+-- Same side-table pattern, stores a JSON array of parent revision ids.
+CREATE TABLE IF NOT EXISTS revision_parents (
+    doc_id    TEXT NOT NULL,
+    revision  TEXT NOT NULL,
+    parent    TEXT NOT NULL,
+    seq       INTEGER NOT NULL,
+    PRIMARY KEY (doc_id, revision, seq),
+    FOREIGN KEY (doc_id, revision) REFERENCES revisions(doc_id, id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS changes (
     doc_id      TEXT NOT NULL,
     id          TEXT NOT NULL,

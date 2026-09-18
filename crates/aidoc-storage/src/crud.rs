@@ -1,7 +1,7 @@
 //! Typed CRUD: row ↔ model conversion. Pure functions, no business logic.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, Transaction, params_from_iter, types::Value};
+use rusqlite::{Connection, OptionalExtension, Transaction, params_from_iter, types::Value};
 
 use aidoc_model::{
     Change, ChangeType, Document, HashRef, Node, NodeKind, Relation, RelationKind, Revision,
@@ -306,7 +306,80 @@ pub fn insert_revision(
             is_head as i64
         ],
     )?;
+    // Side-table: named branch (None == main; we don't store a row for main).
+    if let Some(branch) = &rev.branch {
+        tx.execute(
+            r#"INSERT INTO revision_branches(doc_id, revision, branch, created_at)
+               VALUES(?1, ?2, ?3, ?4)"#,
+            rusqlite::params![
+                doc_id,
+                rev.id.as_str(),
+                branch,
+                rev.created_at.to_rfc3339(),
+            ],
+        )?;
+    }
+    // Side-table: every parent (multi-parent merges). Linear revisions still
+    // get one row so all reads can ignore `revisions.parent`.
+    let parents: Vec<&str> = rev
+        .parent
+        .as_ref()
+        .map(|p| vec![p.as_str()])
+        .unwrap_or_default();
+    for (seq, p) in parents.iter().enumerate() {
+        tx.execute(
+            r#"INSERT INTO revision_parents(doc_id, revision, parent, seq)
+               VALUES(?1, ?2, ?3, ?4)"#,
+            rusqlite::params![doc_id, rev.id.as_str(), p, seq as i64],
+        )?;
+    }
     Ok(())
+}
+
+/// Set the named branch on an existing revision. Used by Branch operations
+/// retroactively (a branch is just a labelled revision in v0.1).
+pub fn set_branch(
+    tx: &Transaction<'_>,
+    doc_id: &str,
+    rev_id: &str,
+    branch: &str,
+) -> Result<(), StoreError> {
+    tx.execute(
+        r#"INSERT INTO revision_branches(doc_id, revision, branch, created_at)
+           VALUES(?1, ?2, ?3, ?4)
+           ON CONFLICT(doc_id, revision) DO UPDATE SET branch = excluded.branch"#,
+        rusqlite::params![doc_id, rev_id, branch, crate::crud::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
+
+pub fn get_branch(
+    conn: &Connection,
+    doc_id: &str,
+    rev_id: &str,
+) -> Result<Option<String>, StoreError> {
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT branch FROM revision_branches WHERE doc_id = ?1 AND revision = ?2",
+            rusqlite::params![doc_id, rev_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(row)
+}
+
+pub fn list_parents(
+    conn: &Connection,
+    doc_id: &str,
+    rev_id: &str,
+) -> Result<Vec<String>, StoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT parent FROM revision_parents WHERE doc_id = ?1 AND revision = ?2 ORDER BY seq",
+    )?;
+    let rows = stmt
+        .query_map(rusqlite::params![doc_id, rev_id], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 pub fn advance_head(tx: &Transaction<'_>, doc_id: &str, new_head: &str) -> Result<(), StoreError> {
@@ -359,12 +432,14 @@ pub fn get_revision(
     if let Some(r) = rows.next()? {
         let parent: Option<String> = r.get(1)?;
         let created: String = r.get(4)?;
+        let branch = get_branch(conn, doc_id, rev_id)?;
         Ok(Some(Revision {
             id: aidoc_model::id::RevisionId::new(r.get::<_, String>(0)?),
             parent: parent.map(aidoc_model::id::RevisionId::new),
             operation: aidoc_model::id::OpId::new(r.get::<_, String>(2)?),
             message: r.get(3)?,
             created_at: chrono::DateTime::parse_from_rfc3339(&created)?.with_timezone(&Utc),
+            branch,
         }))
     } else {
         Ok(None)
@@ -380,12 +455,15 @@ pub fn list_revisions(conn: &Connection, doc_id: &str) -> Result<Vec<Revision>, 
     while let Some(r) = rows.next()? {
         let parent: Option<String> = r.get(1)?;
         let created: String = r.get(4)?;
+        let id = aidoc_model::id::RevisionId::new(r.get::<_, String>(0)?);
+        let branch = get_branch(conn, doc_id, id.as_str())?;
         out.push(Revision {
-            id: aidoc_model::id::RevisionId::new(r.get::<_, String>(0)?),
+            id,
             parent: parent.map(aidoc_model::id::RevisionId::new),
             operation: aidoc_model::id::OpId::new(r.get::<_, String>(2)?),
             message: r.get(3)?,
             created_at: chrono::DateTime::parse_from_rfc3339(&created)?.with_timezone(&Utc),
+            branch,
         });
     }
     Ok(out)

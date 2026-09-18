@@ -133,6 +133,7 @@ pub fn revert_to(
                 operation: op_id.clone(),
                 created_at,
                 message: op.reason.clone(),
+                branch: None,
             },
             true,
         )?;

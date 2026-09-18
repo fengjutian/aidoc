@@ -1,5 +1,7 @@
 //! Provenance — who created the change (spec §28-§30).
 
+#![allow(clippy::large_enum_variant)] // Operation carries many optional AI fields.
+
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -134,14 +136,20 @@ pub struct AiProvenanceBuilder {
 
 impl AiProvenanceBuilder {
     pub fn task(mut self, task: impl Into<String>) -> Self {
-        if let Provenance::Operation { task: ref mut t, .. } = self.inner {
+        if let Provenance::Operation {
+            task: ref mut t, ..
+        } = self.inner
+        {
             *t = Some(task.into());
         }
         self
     }
 
     pub fn reason(mut self, reason: impl Into<String>) -> Self {
-        if let Provenance::Operation { reason: ref mut r, .. } = self.inner {
+        if let Provenance::Operation {
+            reason: ref mut r, ..
+        } = self.inner
+        {
             *r = Some(reason.into());
         }
         self

@@ -21,6 +21,8 @@ pub enum OperationType {
     Split,
     Merge,
     Revert,
+    /// v0.1 (spec §34): tag the current state with a named branch.
+    Branch,
 }
 
 impl OperationType {
@@ -37,6 +39,7 @@ impl OperationType {
             Self::Split => "split",
             Self::Merge => "merge",
             Self::Revert => "revert",
+            Self::Branch => "branch",
         }
     }
 }

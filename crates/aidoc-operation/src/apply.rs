@@ -31,6 +31,9 @@ pub enum ApplyError {
     #[error("split requires targets")]
     MissingSplitTargets,
 
+    #[error("invalid operation: {0}")]
+    Invalid(String),
+
     #[error("unknown operation: {0}")]
     UnknownOperation(String),
 }
@@ -57,6 +60,16 @@ pub fn apply_operation(
     let op_id = op.id.clone();
     let actor_json = serde_json::to_string(&op.actor)
         .map_err(|e| ApplyError::Store(aidoc_storage::StoreError::Integrity(e.to_string())))?;
+    // Resolve the branch name (if this op is a Branch) before we go into the
+    // transaction so we can attach it to the new Revision row.
+    let resolved_branch = match op.op_type {
+        OperationType::Branch => op
+            .patch
+            .as_ref()
+            .and_then(|p| p.attributes.get("branch").cloned())
+            .or_else(|| op.reason.clone()),
+        _ => None,
+    };
     let patch_json = op
         .patch
         .as_ref()
@@ -337,6 +350,31 @@ pub fn apply_operation(
                 // Revert is implemented in aidoc-history, not here.
                 return Err(ApplyError::UnknownOperation("revert".into()));
             }
+            OperationType::Branch => {
+                // v0.1 Branch (spec §34): record a named-branch revision that
+                // shares the current head as its parent. The branch name comes
+                // from `patch.attributes["branch"]` or, as a fallback, the
+                // `reason` field. Nothing else mutates — branching is just
+                // labelling the current state. Merge (spec §35) is the same
+                // shape with two parents; v0.1 stores up to N parents in the
+                // `revision_parents` side-table.
+                let branch_name = op
+                    .patch
+                    .as_ref()
+                    .and_then(|p| p.attributes.get("branch").cloned())
+                    .or_else(|| op.reason.clone())
+                    .ok_or_else(|| {
+                        ApplyError::Invalid(format!(
+                            "branch op needs a branch name (patch.attributes[\"branch\"] or reason)"
+                        ))
+                    })?;
+                if branch_name.trim().is_empty() || branch_name == "main" {
+                    return Err(ApplyError::Invalid(format!(
+                        "branch name must be non-empty and not 'main' (got {branch_name:?})"
+                    )));
+                }
+                // Branch only attaches a label; nothing to mutate in nodes.
+            }
         }
 
         // 4. Write Operation + Revision + advance head.
@@ -364,6 +402,7 @@ pub fn apply_operation(
             operation: op_id.clone(),
             created_at,
             message: op.reason.clone(),
+            branch: resolved_branch.clone(),
         };
         crud::advance_head(tx, doc_id, new_rev.as_str())?;
         crud::insert_revision(tx, doc_id, &new_revision, true)?;

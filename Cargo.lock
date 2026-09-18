@@ -131,6 +131,7 @@ dependencies = [
  "aidoc-storage",
  "anyhow",
  "chrono",
+ "indexmap 2.14.2",
  "rusqlite",
  "serde",
  "serde_json",
