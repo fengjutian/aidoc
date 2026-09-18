@@ -70,6 +70,7 @@ interface CommandPaletteProps {
   onSave: () => void;
   onExportHtml: () => void;
   onExportMarkdown: () => void;
+  onOpenBranches: () => void;
   onRevert: (revId: string) => void;
   onCreateNode: (id: string, kind: string, content: string) => void;
   onDeleteNode: (target: string) => void;
@@ -95,6 +96,7 @@ export function CommandPalette({
   onSave,
   onExportHtml,
   onExportMarkdown,
+  onOpenBranches,
   onRevert,
   onCreateNode,
   onDeleteNode,
@@ -195,16 +197,20 @@ export function CommandPalette({
       label: "Branch current head",
       group: "Document",
       icon: GitBranch,
-      disabled: true,
-      run: () => {},
+      run: () => {
+        onOpenBranches();
+        onOpenChange(false);
+      },
     },
     {
       id: "merge",
       label: "Merge branch into main",
       group: "Document",
       icon: GitMerge,
-      disabled: true,
-      run: () => {},
+      run: () => {
+        onOpenBranches();
+        onOpenChange(false);
+      },
     },
     {
       id: "new-node",

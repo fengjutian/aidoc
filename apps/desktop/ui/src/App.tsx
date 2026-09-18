@@ -887,6 +887,7 @@ export default function App() {
         onExportMarkdown={() => {
           void onExportMarkdown();
         }}
+        onOpenBranches={() => setBranchOpen(true)}
         onRevert={(id) => {
           void onRevert(id);
         }}
@@ -921,6 +922,14 @@ export default function App() {
         onJumpToNode={(id) => {
           setActiveId(id);
           setAiOpen(false);
+        }}
+      />
+
+      <BranchDialog
+        open={branchOpen}
+        onOpenChange={setBranchOpen}
+        onChanged={() => {
+          void refresh();
         }}
       />
     </TooltipProvider>
