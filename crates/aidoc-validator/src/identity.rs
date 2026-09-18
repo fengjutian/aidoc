@@ -1,46 +1,36 @@
-//! Identity checks: duplicate / invalid / missing root node IDs.
-
-use thiserror::Error;
+//! Identity checks: duplicate / invalid node IDs (spec §40).
 
 use aidoc_storage::{Store, crud};
 
-use crate::ValidationReport;
+use crate::{Finding, ValidationCategory, ValidationError, Validator};
 
-#[derive(Debug, Error)]
-pub enum IdentityError {
-    #[error(transparent)]
-    Store(#[from] aidoc_storage::StoreError),
-}
+pub struct IdentityValidator;
 
-pub fn check(
-    store: &Store,
-    doc_id: &str,
-    report: &mut ValidationReport,
-) -> Result<(), IdentityError> {
-    let nodes = crud::list_nodes(store.conn(), doc_id)?;
-    let mut seen = std::collections::HashSet::new();
-    let mut has_root = false;
-
-    for n in &nodes {
-        if !seen.insert(n.id.clone()) {
-            report
-                .identity_errors
-                .push(format!("duplicate node id: {}", n.id.as_str()));
-        }
-        if n.id.as_str() == "root" {
-            has_root = true;
-        }
-        if let Err(e) = aidoc_model::id::NodeId::new(n.id.as_str()) {
-            report
-                .identity_errors
-                .push(format!("invalid node id: {} ({})", n.id.as_str(), e));
-        }
+impl Validator for IdentityValidator {
+    fn category(&self) -> ValidationCategory {
+        ValidationCategory::Identity
     }
 
-    if !has_root {
-        // The "root" hint is only required if the document declares one;
-        // we treat it as a warning rather than an error here.
-    }
+    fn check(&self, store: &Store, doc_id: &str) -> Result<Vec<Finding>, ValidationError> {
+        let nodes = crud::list_nodes(store.conn(), doc_id)?;
+        let mut findings = Vec::new();
+        let mut seen = std::collections::HashSet::new();
 
-    Ok(())
+        for n in &nodes {
+            if !seen.insert(n.id.clone()) {
+                findings.push(Finding::new(
+                    self.category(),
+                    format!("duplicate node id: {}", n.id.as_str()),
+                ));
+            }
+            if let Err(e) = aidoc_model::id::NodeId::new(n.id.as_str()) {
+                findings.push(Finding::new(
+                    self.category(),
+                    format!("invalid node id: {} ({})", n.id.as_str(), e),
+                ));
+            }
+        }
+
+        Ok(findings)
+    }
 }
