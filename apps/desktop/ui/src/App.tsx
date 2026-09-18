@@ -88,7 +88,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "never">("never");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -190,6 +190,8 @@ export default function App() {
         await invoke("save_doc");
         setLastSavedAt(new Date());
         setSaveState("saved");
+      } else {
+        setSaveState("dirty");
       }
     } catch (e) {
       setError(String(e));

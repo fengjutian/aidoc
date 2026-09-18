@@ -1,7 +1,9 @@
-import { CheckCircle2, CircleDashed, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, CircleDashed, Loader2 } from "lucide-react";
+
+export type SaveStatusState = "idle" | "saving" | "saved" | "dirty" | "never";
 
 interface SaveStatusProps {
-  state: "idle" | "saving" | "saved" | "never";
+  state: SaveStatusState;
   lastSavedAt: Date | null;
 }
 
@@ -22,6 +24,15 @@ export function SaveStatus({ state, lastSavedAt }: SaveStatusProps) {
       <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
         Saving…
+      </span>
+    );
+  }
+
+  if (state === "dirty") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs text-amber-600 dark:text-amber-400">
+        <AlertCircle className="h-3 w-3" />
+        Unsaved changes
       </span>
     );
   }
