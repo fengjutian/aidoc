@@ -102,26 +102,8 @@ pub fn revert_to(
         }
 
         // 3. Record Operation + new Revision.
-        let actor_json = serde_json::to_string(&op.actor)
-            .map_err(|e| aidoc_storage::StoreError::Integrity(e.to_string()))?;
-
         let created_at = Utc::now();
-        tx.execute(
-            r#"INSERT INTO operations(doc_id, id, op_type, target, expected_revision, target_revision, actor_json, patch_json, reason, created_at)
-               VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"#,
-            rusqlite::params![
-                doc_id,
-                op_id.as_str(),
-                op.op_type.as_str(),
-                op.target.as_ref().map(|n| n.as_str().to_owned()),
-                op.expected_revision.as_str(),
-                op.target_revision.as_ref().map(|r| r.as_str().to_owned()),
-                actor_json,
-                rusqlite::types::Value::Null,
-                op.reason.as_deref(),
-                created_at.to_rfc3339()
-            ],
-        )?;
+        crud::insert_operation(tx, doc_id, &op, created_at)?;
 
         crud::advance_head(tx, doc_id, new_rev.as_str())?;
         crud::insert_revision(

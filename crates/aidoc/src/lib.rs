@@ -4,18 +4,22 @@
 //! `use aidoc::*` and skip per-crate paths.
 
 pub use aidoc_exporter as exporter;
-pub use aidoc_exporter::{export_html, export_markdown};
+pub use aidoc_exporter::{ExportFormat, ExportInput, Exporter, export_html, export_markdown};
 pub use aidoc_history as history;
 pub use aidoc_history::{RevertError, RevertOutcome, revert_to};
 pub use aidoc_model as model;
 pub use aidoc_model::*;
 pub use aidoc_operation as operation;
-pub use aidoc_operation::{ApplyError, ApplyOutcome, OperationError, apply_operation};
+pub use aidoc_operation::{
+    ApplyContext, ApplyError, ApplyOutcome, HandlerRegistry, OperationError, OperationHandler,
+    apply_operation, apply_with_registry,
+};
 pub use aidoc_package as package;
 pub use aidoc_package::{
     Manifest, Package, PackageError, create_package, open_package, save_package,
 };
 pub use aidoc_renderer as renderer;
 pub use aidoc_storage as storage;
-pub use aidoc_storage::{AnyhowErr, Store, StoreError, crud};
+pub use aidoc_storage::{AnyhowErr, SnapshotStrategy, Store, StoreError, crud};
 pub use aidoc_validator as validator;
+pub use aidoc_validator::{Finding, ValidationCategory, Validator};
