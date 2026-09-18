@@ -1,0 +1,16 @@
+[package]
+name = "aidoc-history"
+description = "Revision / Change history + Revert (always-new-revision)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aidoc-model = { path = "../aidoc-model" }
+aidoc-storage = { path = "../aidoc-storage" }
+aidoc-operation = { path = "../aidoc-operation" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }

@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aidoc-model",
+    "crates/aidoc-storage",
+    "crates/aidoc-operation",
+    "crates/aidoc-history",
+    "crates/aidoc-validator",
+    "crates/aidoc-package",
+    "crates/aidoc-renderer",
+    "crates/aidoc-exporter",
+    "crates/aidoc",
+    "apps/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+clap = { version = "4.5", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+indexmap = { version = "2.6", features = ["serde"] }
+toml = "0.8"
+walkdir = "2.5"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,11 @@
+[package]
+name = "aidoc-validator"
+description = "Validate identity / structure / relation / revision / code-ref"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aidoc-model = { path = "../aidoc-model" }
+aidoc-storage = { path = "../aidoc-storage" }
+thiserror = { workspace = true }

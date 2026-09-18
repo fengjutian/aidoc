@@ -1,0 +1,16 @@
+[package]
+name = "aidoc"
+description = "AIDoc facade crate — re-exports the full Rust core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aidoc-model = { path = "../aidoc-model" }
+aidoc-storage = { path = "../aidoc-storage" }
+aidoc-operation = { path = "../aidoc-operation" }
+aidoc-history = { path = "../aidoc-history" }
+aidoc-validator = { path = "../aidoc-validator" }
+aidoc-package = { path = "../aidoc-package" }
+aidoc-renderer = { path = "../aidoc-renderer" }
+aidoc-exporter = { path = "../aidoc-exporter" }

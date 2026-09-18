@@ -1,0 +1,12 @@
+target/
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.aidoc
+!/examples/**/*.aidoc
+.aidoc-workspace/
