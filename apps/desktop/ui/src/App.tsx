@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+import { NodeEditor } from "./NodeEditor";
+
 interface Info {
   doc_id: string;
   title: string;
@@ -29,7 +31,6 @@ export default function App() {
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [revs, setRevs] = useState<RevisionRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [initPath, setInitPath] = useState("");
   const [title, setTitle] = useState("");
@@ -37,10 +38,13 @@ export default function App() {
   const refresh = async () => {
     if (!info) return;
     try {
-      const [n, r] = await Promise.all([invoke<NodeRow[]>("list_nodes"), invoke<RevisionRow[]>("list_revisions")]);
+      const [n, r] = await Promise.all([
+        invoke<NodeRow[]>("list_nodes"),
+        invoke<RevisionRow[]>("list_revisions"),
+      ]);
       setNodes(n);
       setRevs(r);
-      setInfo((prev) => prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev);
+      setInfo((prev) => (prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev));
     } catch (e) {
       setError(String(e));
     }
@@ -49,11 +53,6 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [info?.doc_id]);
-
-  useEffect(() => {
-    const found = nodes.find((n) => n.id === activeId);
-    if (found) setDraft(found.content);
-  }, [activeId, nodes]);
 
   const onInit = async () => {
     setError(null);
@@ -69,12 +68,19 @@ export default function App() {
     }
   };
 
-  const onUpdate = async () => {
-    if (!activeId) return;
+  const onOpen = async () => {
     setError(null);
     try {
-      await invoke<string>("update_node", { target: activeId, content: draft });
-      await refresh();
+      const i = await invoke<Info>("open_doc", { path: initPath });
+      setInfo(i);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onUpdate = async (target: string, html: string) => {
+    try {
+      await invoke<string>("update_node", { target, content: html });
     } catch (e) {
       setError(String(e));
     }
@@ -99,12 +105,25 @@ export default function App() {
     }
   };
 
+  const onExportHtml = async () => {
+    setError(null);
+    try {
+      const html = await invoke<string>("export_html");
+      // Open the exported HTML in a new tab.
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   if (!info) {
     return (
       <div className="topbar" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <h1>AIDoc Desktop</h1>
         <p style={{ margin: 0, opacity: 0.7 }}>
-          No document open. Pick a path and initialize a new <code>.aidoc</code> package.
+          No document open. Initialize a new <code>.aidoc</code> or open an existing one.
         </p>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <input
@@ -122,11 +141,16 @@ export default function App() {
           <button onClick={onInit} disabled={!initPath}>
             init
           </button>
+          <button onClick={onOpen} disabled={!initPath}>
+            open
+          </button>
         </div>
         {error && <div className="error">{error}</div>}
       </div>
     );
   }
+
+  const active = nodes.find((n) => n.id === activeId);
 
   return (
     <>
@@ -135,9 +159,7 @@ export default function App() {
           {info.title} <span style={{ opacity: 0.5 }}>· head={info.head_revision}</span>
         </h1>
         <button onClick={onSave}>save</button>
-        <button onClick={() => invoke("export_html").then(console.log)} disabled>
-          export html
-        </button>
+        <button onClick={onExportHtml}>export html</button>
       </div>
       {error && <div className="error">{error}</div>}
       <div className="main">
@@ -178,20 +200,16 @@ export default function App() {
         </aside>
         <main className="editor">
           <div className="pane">
-            {activeId ? (
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} />
+            {active ? (
+              <NodeEditor
+                key={active.id}
+                kind={active.kind as never}
+                content={active.content}
+                onChange={(html) => onUpdate(active.id, html)}
+              />
             ) : (
               <p style={{ opacity: 0.6 }}>Select a node from the tree to edit.</p>
             )}
-          </div>
-          <div className="actions">
-            <button onClick={onUpdate} disabled={!activeId}>
-              apply update
-            </button>
-            <span style={{ flex: 1 }} />
-            <span style={{ opacity: 0.6, fontSize: "0.8rem" }}>
-              target={activeId ?? "—"}
-            </span>
           </div>
         </main>
       </div>

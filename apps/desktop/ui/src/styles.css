@@ -152,3 +152,121 @@ body {
   background: rgba(192, 57, 43, 0.1);
   border-bottom: 1px solid rgba(192, 57, 43, 0.3);
 }
+
+/* ---------------- Tiptap rich editor ---------------- */
+
+.node-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.rich-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.05);
+}
+
+.rich-toolbar button {
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.rich-toolbar button.active {
+  background: rgba(58, 130, 246, 0.25);
+  border-color: rgba(58, 130, 246, 0.6);
+}
+
+.aidoc-rich {
+  flex: 1;
+  outline: none;
+  padding: 0.75rem 1rem;
+  overflow: auto;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.aidoc-rich p { margin: 0.4rem 0; }
+.aidoc-rich h2 { font-size: 1.3rem; margin: 1rem 0 0.4rem; }
+.aidoc-rich h3 { font-size: 1.1rem; margin: 0.8rem 0 0.3rem; }
+.aidoc-rich ul, .aidoc-rich ol { padding-left: 1.5rem; }
+.aidoc-rich code { background: rgba(127,127,127,0.15); padding: 0.05rem 0.25rem; border-radius: 3px; font-size: 0.85em; }
+
+.aidoc-rich.is-code pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.aidoc-rich.is-quote,
+.aidoc-rich.is-requirement,
+.aidoc-rich.is-decision,
+.aidoc-rich.is-problem,
+.aidoc-rich.is-solution {
+  border-left: 4px solid rgba(127,127,127,0.4);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+}
+.aidoc-rich.is-requirement  { border-color: #2563eb; background: rgba(37, 99, 235, 0.07); }
+.aidoc-rich.is-decision     { border-color: #16a34a; background: rgba(22, 163, 74, 0.07); }
+.aidoc-rich.is-problem      { border-color: #dc2626; background: rgba(220, 38, 38, 0.07); }
+.aidoc-rich.is-solution     { border-color: #f59e0b; background: rgba(245, 158, 11, 0.07); }
+.aidoc-rich.is-code-ref     { border-color: #6366f1; background: rgba(99, 102, 241, 0.07); }
+
+.aidoc-rich p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgba(127,127,127,0.6);
+  pointer-events: none;
+  height: 0;
+}
+
+/* ---------------- Mermaid ---------------- */
+
+.diagram-view, .diagram-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+}
+
+.mermaid-svg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(127,127,127,0.05);
+  border-radius: 4px;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.mermaid-svg svg { max-width: 100%; height: auto; }
+
+.diagram-edit textarea {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(127,127,127,0.3);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  resize: none;
+}
+
+.diagram-edit .actions, .diagram-view .actions {
+  display: flex;
+  gap: 0.5rem;
+}

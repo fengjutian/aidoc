@@ -1,0 +1,25 @@
+[package]
+name = "aidoc-mcp"
+description = "MCP server exposing the AIDoc Operation engine as tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aidoc-mcp"
+path = "src/main.rs"
+
+[dependencies]
+aidoc = { path = "../aidoc" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# placeholder so the crate compiles on wasm targets (unused on x86_64).
+
+[dependencies.rmcp]
+version = "0.3"
+features = ["server", "transport-stdio", "macros"]

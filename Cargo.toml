@@ -10,6 +10,7 @@ members = [
     "crates/aidoc-renderer",
     "crates/aidoc-exporter",
     "crates/aidoc",
+    "crates/aidoc-mcp",
     "apps/cli",
     "apps/desktop/src-tauri",
 ]
