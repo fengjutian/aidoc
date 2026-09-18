@@ -13,6 +13,7 @@ import {
   Hash,
   Plus,
   Save,
+  Settings as SettingsIcon,
   Sparkles,
   Trash2,
   Undo2,
@@ -20,7 +21,9 @@ import {
 
 import { CommandPalette } from "@/components/CommandPalette";
 import { RevisionDiff } from "@/components/RevisionDiff";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useSettings } from "@/hooks/useSettings";
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,6 +76,7 @@ const kindIcon = (kind: string) => {
 
 export default function App() {
   const theme = useTheme();
+  const { settings, update: updateSettings } = useSettings();
   const [info, setInfo] = useState<Info | null>(null);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [revs, setRevs] = useState<RevisionRow[]>([]);
@@ -82,6 +86,7 @@ export default function App() {
   const [title, setTitle] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [diffRev, setDiffRev] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refresh = async () => {
     if (!info) return;
@@ -104,6 +109,12 @@ export default function App() {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.doc_id]);
+
+  // Apply editor font size to a CSS var the stylesheet reads.
+  useEffect(() => {
+    const px = settings.fontSize === "sm" ? "0.85rem" : settings.fontSize === "lg" ? "1.05rem" : "0.95rem";
+    document.documentElement.style.setProperty("--editor-font-size", px);
+  }, [settings.fontSize]);
 
   // Global keyboard shortcuts: ⌘K palette, ⌘S save, ⌘E export, ⌘N new node.
   // Skip when focus is inside an editable field so the OS / Radix can still
@@ -170,6 +181,9 @@ export default function App() {
   const onUpdate = async (target: string, html: string) => {
     try {
       await invoke<string>("update_node", { target, content: html });
+      if (settings.autosave) {
+        await invoke("save_doc");
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -335,6 +349,20 @@ export default function App() {
           resolved={theme.resolved}
           onSet={theme.set}
         />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <SettingsIcon className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Settings</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -556,6 +584,13 @@ export default function App() {
         onClose={() => {
           setDiffRev(null);
         }}
+      />
+
+      <SettingsPanel
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={settings}
+        onUpdate={updateSettings}
       />
     </TooltipProvider>
   );
