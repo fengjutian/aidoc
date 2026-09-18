@@ -1,11 +1,10 @@
-//! `aidoc-mcp` — Model Context Protocol server over stdio.
+//! aidoc-mcp: Model Context Protocol server over stdio.
 //!
-//! Each tool is a thin wrapper around an `aidoc` core call. The server keeps
-//! exactly one open document per session, switched by `init_aidoc` /
-//! `open_aidoc`. Writes go through the same `apply_operation` pipeline the
+//! Each tool is a thin wrapper around an aidoc core call. The server keeps
+//! exactly one open document per session, switched by init_aidoc /
+//! open_aidoc. Writes go through the same apply_operation pipeline the
 //! CLI uses, so every spec MUST holds.
 
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use aidoc::{
@@ -16,7 +15,8 @@ use aidoc::{
 use aidoc_storage::{crud, Store};
 
 use rmcp::{
-    handler::server::tool::ToolRouter, model::*, tool, tool_handler, transport::stdio, ServiceExt,
+    handler::server::tool::ToolRouter, model::*, tool, tool_handler, tool_router, transport::stdio,
+    ServiceExt,
 };
 use serde::Serialize;
 
@@ -88,7 +88,7 @@ impl rmcp::ServerHandler for AIDocServer {
     }
 }
 
-#[tool(tool_router)]
+#[tool_router]
 impl AIDocServer {
     fn new() -> Self {
         Self {
@@ -100,12 +100,12 @@ impl AIDocServer {
     #[tool(description = "Create a brand-new .aidoc package on disk and open it.")]
     async fn init_aidoc(
         &self,
-        #[tool(param)] path: String,
-        #[tool(param)] doc_id: String,
-        #[tool(param)] title: String,
+        path: String,
+        doc_id: String,
+        title: String,
     ) -> Result<InitResult, String> {
         let (package, mut store) =
-            create_package(PathBuf::from(&path), &doc_id, &title).map_err(e)?;
+            create_package(std::path::PathBuf::from(&path), &doc_id, &title).map_err(e)?;
         seed_root_and_r000(&mut store, &doc_id, &title).map_err(e)?;
         let info = InitResult {
             doc_id,
@@ -118,8 +118,8 @@ impl AIDocServer {
     }
 
     #[tool(description = "Open an existing .aidoc package from disk.")]
-    async fn open_aidoc(&self, #[tool(param)] path: String) -> Result<InitResult, String> {
-        let (package, store) = open_package(PathBuf::from(&path)).map_err(e)?;
+    async fn open_aidoc(&self, path: String) -> Result<InitResult, String> {
+        let (package, store) = open_package(std::path::PathBuf::from(&path)).map_err(e)?;
         let doc_id = package.manifest.document.id.clone();
         let head = crud::head_revision(store.conn(), &doc_id)
             .map_err(e)?
@@ -157,8 +157,8 @@ impl AIDocServer {
     }
 
     #[tool(description = "Show details for one node by id.")]
-    async fn show_node(&self, #[tool(param)] node_id: String) -> Result<NodeDto, String> {
-        let doc_id = current_doc_id(&self.state)?;
+    async fn show_node(&self, node_id: String) -> Result<NodeDto, String> {
+        let _ = current_doc_id(&self.state)?;
         with_doc(&self.state, |s, doc_id| {
             let id = NodeId::from_validated(&node_id);
             let n = crud::get_node(s.store.conn(), doc_id, &id)
@@ -171,30 +171,30 @@ impl AIDocServer {
     #[tool(description = "Update a node's content. Wraps a typed Update Operation, so a new revision is produced and conflict-checked against the current head.")]
     async fn update_node(
         &self,
-        #[tool(param)] target: String,
-        #[tool(param)] content: String,
+        target: String,
+        content: String,
     ) -> Result<RevisionDto, String> {
         run_op(&self.state, OperationType::Update, target, Some(content))
     }
 
-    #[tool(description = "Create a brand-new node. `content` becomes the initial text.")]
+    #[tool(description = "Create a brand-new node. content becomes the initial text.")]
     async fn create_node(
         &self,
-        #[tool(param)] target: String,
-        #[tool(param)] content: String,
+        target: String,
+        content: String,
     ) -> Result<RevisionDto, String> {
         run_op(&self.state, OperationType::Create, target, Some(content))
     }
 
     #[tool(description = "Delete a node by id.")]
-    async fn delete_node(&self, #[tool(param)] target: String) -> Result<RevisionDto, String> {
+    async fn delete_node(&self, target: String) -> Result<RevisionDto, String> {
         run_op(&self.state, OperationType::Delete, target, None)
     }
 
     #[tool(description = "Apply a raw Operation JSON object. Use this for op types not covered by the typed helpers (split, merge, move, link, unlink, etc.).")]
     async fn apply_operation(
         &self,
-        #[tool(param)] op_json: serde_json::Value,
+        op_json: serde_json::Value,
     ) -> Result<RevisionDto, String> {
         let op: Operation = serde_json::from_value(op_json).map_err(e)?;
         let doc_id = current_doc_id(&self.state)?;
@@ -223,7 +223,7 @@ impl AIDocServer {
     }
 
     #[tool(description = "Revert to a previous revision. Always creates a new revision; old revisions are kept (spec MUST 4).")]
-    async fn revert(&self, #[tool(param)] target_revision: String) -> Result<RevisionDto, String> {
+    async fn revert(&self, target_revision: String) -> Result<RevisionDto, String> {
         let doc_id = current_doc_id(&self.state)?;
         with_doc(&self.state, |s, doc_id| {
             let out = revert_to(
@@ -264,7 +264,7 @@ impl AIDocServer {
             let mut out = String::new();
             let total = report.total_errors();
             if total == 0 {
-                out.push_str("OK — 0 errors across identity/structure/relation/revision/code-ref");
+                out.push_str("OK -- 0 errors across identity/structure/relation/revision/code-ref");
                 return Ok(out);
             }
             for (label, errs) in [
@@ -295,7 +295,7 @@ fn e<E: std::fmt::Display>(e: E) -> String {
 }
 
 fn missing_doc() -> String {
-    "no document open — call init_aidoc / open_aidoc first".to_string()
+    "no document open - call init_aidoc / open_aidoc first".to_string()
 }
 
 fn current_doc_id(state: &ServerState) -> Result<String, String> {
@@ -370,8 +370,8 @@ fn rev_to_dto(rev: &RevisionId, op_id: &OpId) -> RevisionDto {
 }
 
 fn seed_root_and_r000(store: &mut Store, doc_id: &str, title: &str) -> anyhow::Result<()> {
-    use aidoc_storage::AnyhowErr;
     use aidoc::NodeKind;
+    use aidoc_storage::AnyhowErr;
     store.tx::<_, _, AnyhowErr>(|tx| {
         let doc = Document::new(doc_id.to_string(), title.to_string(), NodeId::from_validated("root"));
         crud::upsert_document(tx, &doc)?;
