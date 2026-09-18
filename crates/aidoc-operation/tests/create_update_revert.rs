@@ -27,6 +27,7 @@ fn setup() -> Store {
         operation: OpId::new("OP-000"),
         created_at: chrono::Utc::now(),
         message: Some("seed".into()),
+        branch: None,
     };
     store
         .tx::<_, _, AnyhowErr>(|tx| {

@@ -1,4 +1,5 @@
 pub mod apply;
+pub mod branch;
 pub mod demo;
 pub mod diff;
 pub mod example;
@@ -6,6 +7,7 @@ pub mod export;
 pub mod history;
 pub mod info;
 pub mod init;
+pub mod merge;
 pub mod node_list;
 pub mod node_show;
 pub mod revert;

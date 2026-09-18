@@ -130,6 +130,34 @@ enum Cmd {
         #[arg(long)]
         export_html: Option<String>,
     },
+
+    /// Tag the current head with a named branch (spec §34).
+    ///
+    /// `aidoc branch path/to/doc.aidoc ai-draft`
+    /// creates a new revision labelled "ai-draft". Nodes are not mutated;
+    /// subsequent ops against the new head belong to that branch.
+    Branch {
+        path: String,
+        /// Branch name. Must be non-empty and not "main".
+        name: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+
+    /// Merge a named branch back into main (spec §35, simplified).
+    ///
+    /// `aidoc merge path/to/doc.aidoc ai-draft`
+    /// produces a new revision whose `expected_revision` is the current main
+    /// head and whose branch carries the merged branch label. v0.1 does not
+    /// attempt automatic conflict resolution — both branches are expected to
+    /// have touched disjoint nodes.
+    Merge {
+        path: String,
+        /// Source branch to merge.
+        branch: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -167,5 +195,13 @@ fn main() -> Result<()> {
             path,
             export_html,
         } => commands::example::run(&template, &path, export_html.as_deref()),
+        Cmd::Branch { path, name, reason } => {
+            commands::branch::run(&path, &name, reason.as_deref())
+        }
+        Cmd::Merge {
+            path,
+            branch,
+            reason,
+        } => commands::merge::run(&path, &branch, reason.as_deref()),
     }
 }

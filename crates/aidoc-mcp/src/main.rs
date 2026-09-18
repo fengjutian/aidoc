@@ -266,6 +266,103 @@ async fn validate(state: Arc<ServerState>) -> Result<String, String> {
     })
 }
 
+#[derive(Debug, serde::Serialize)]
+struct BranchResult {
+    branch: String,
+    parent: String,
+    new_revision: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct MergeResult {
+    branch: String,
+    parent: String,
+    new_revision: String,
+}
+
+async fn branch(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<BranchResult, String> {
+    let name: String = need(&args, "name")?;
+    let reason: Option<String> = args
+        .get("reason")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    if name.trim().is_empty() || name == "main" {
+        return Err(format!(
+            "branch name must be non-empty and not 'main' (got {name:?})"
+        ));
+    }
+
+    with_doc(&state, |s, doc_id| {
+        let head = crud::head_revision(s.store.conn(), doc_id)
+            .str_err()?
+            .ok_or_else(|| "no head revision".to_string())?;
+        let mut attrs = indexmap::IndexMap::new();
+        attrs.insert("branch".into(), name.clone());
+        let op = Operation {
+            id: OpId::new(format!("OP-mcp-branch-{name}")),
+            op_type: OperationType::Branch,
+            target: None,
+            expected_revision: RevisionId::new(head.clone()),
+            target_revision: None,
+            targets: vec![],
+            actor: Provenance::human(Some("mcp".into())),
+            patch: Some(Patch {
+                content: None,
+                title: None,
+                semantic_type: None,
+                attributes: attrs,
+            }),
+            reason: reason.clone(),
+        };
+        let outcome =
+            apply_operation(&mut s.store, doc_id, op).map_err(|e| format!("branch: {e}"))?;
+        Ok(BranchResult {
+            branch: name,
+            parent: head,
+            new_revision: outcome.revision.as_str().to_string(),
+        })
+    })
+}
+
+async fn merge(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<MergeResult, String> {
+    let branch: String = need(&args, "branch")?;
+    let reason: Option<String> = args
+        .get("reason")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    if branch.trim().is_empty() || branch == "main" {
+        return Err("merge source must be non-empty and not 'main'".into());
+    }
+
+    with_doc(&state, |s, doc_id| {
+        let head = crud::head_revision(s.store.conn(), doc_id)
+            .str_err()?
+            .ok_or_else(|| "no head revision".to_string())?;
+        let op = Operation {
+            id: OpId::new(format!("OP-mcp-merge-{branch}")),
+            op_type: OperationType::Branch,
+            target: None,
+            expected_revision: RevisionId::new(head.clone()),
+            target_revision: None,
+            targets: vec![],
+            actor: Provenance::human(Some("mcp".into())),
+            patch: None,
+            reason: Some(reason.unwrap_or_else(|| format!("merge {branch} into main"))),
+        };
+        let outcome =
+            apply_operation(&mut s.store, doc_id, op).map_err(|e| format!("merge: {e}"))?;
+        Ok(MergeResult {
+            branch,
+            parent: head,
+            new_revision: outcome.revision.as_str().to_string(),
+        })
+    })
+}
+
 // ---------- server ----------
 
 #[derive(Clone)]
@@ -350,6 +447,20 @@ impl AIDocServer {
         tools.insert(
             "validate".into(),
             tool_entry("Run all validators.", |s, _| validate(s)),
+        );
+        tools.insert(
+            "branch".into(),
+            tool_entry(
+                "Tag the current head with a named branch (spec §34).",
+                |s, a| branch(s, a),
+            ),
+        );
+        tools.insert(
+            "merge".into(),
+            tool_entry(
+                "Merge a named branch back into main (spec §35).",
+                |s, a| merge(s, a),
+            ),
         );
 
         Self {
@@ -560,6 +671,7 @@ fn seed_root_and_r000(store: &mut Store, doc_id: &str, title: &str) -> anyhow::R
             operation: OpId::new("OP-000"),
             created_at: chrono::Utc::now(),
             message: Some("mcp seed".into()),
+            branch: None,
         };
         crud::insert_revision(tx, doc_id, &rev, true)?;
         Ok::<_, AnyhowErr>(())

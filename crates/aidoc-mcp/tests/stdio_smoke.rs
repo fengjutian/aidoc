@@ -154,6 +154,8 @@ async fn mcp_handshake_and_init_aidoc() {
         "revert",
         "export_html",
         "validate",
+        "branch",
+        "merge",
     ] {
         assert!(
             names.contains(&required),
@@ -214,6 +216,58 @@ async fn mcp_handshake_and_init_aidoc() {
     assert!(
         blob.contains("root"),
         "list_nodes output missing root: {blob}"
+    );
+
+    // 5. tools/call branch — labels the current head with a named branch.
+    send(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "branch",
+                "arguments": {"name": "ai-draft", "reason": "smoke test branch"}
+            }
+        }),
+    )
+    .await;
+    let branch_call = recv(&mut stdout).await;
+    assert!(
+        branch_call["error"].is_null(),
+        "branch errored: {branch_call:?}"
+    );
+    let branch_blob = branch_call["result"]["content"]
+        .as_array()
+        .expect("content array")
+        .iter()
+        .filter_map(|c| c["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        branch_blob.contains("ai-draft"),
+        "branch response missing branch name: {branch_blob}"
+    );
+    assert!(
+        branch_blob.contains("R001"),
+        "branch response missing R001 (new revision): {branch_blob}"
+    );
+
+    // 6. tools/call merge — collapses the branch back.
+    send(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {"name": "merge", "arguments": {"branch": "ai-draft"}}
+        }),
+    )
+    .await;
+    let merge_call = recv(&mut stdout).await;
+    assert!(
+        merge_call["error"].is_null(),
+        "merge errored: {merge_call:?}"
     );
 
     drop(stdin);

@@ -143,6 +143,7 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
         operation: OpId::new("OP-000"),
         created_at: chrono::Utc::now(),
         message: Some(format!("example:{template} seed")),
+        branch: None,
     };
     s.store
         .tx::<_, _, AnyhowErr>(|tx| {
