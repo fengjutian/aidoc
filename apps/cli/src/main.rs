@@ -169,7 +169,7 @@ enum Cmd {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.cmd {
+    let res = match cli.cmd {
         Cmd::Init {
             path,
             doc_id,
@@ -217,5 +217,17 @@ fn main() -> Result<()> {
             branch,
             reason,
         } => commands::merge::run(&path, &branch, reason.as_deref()),
+    };
+
+    // `validate` wants to communicate the error count via the process exit
+    // code so CI pipelines can read it. Capped at 125 because Unix shells
+    // only use 8 bits for $? and 126/127 are reserved for exec / not-found.
+    if let Err(e) = res {
+        if let Some(failure) = e.downcast_ref::<commands::validate::ValidateFailure>() {
+            let code = failure.count.min(125).max(1) as i32;
+            std::process::exit(code);
+        }
+        return Err(e);
     }
+    Ok(())
 }

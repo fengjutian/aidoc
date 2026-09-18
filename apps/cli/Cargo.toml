@@ -17,3 +17,9 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 indexmap = { workspace = true }
+
+[dev-dependencies]
+aidoc-storage = { path = "../../crates/aidoc-storage" }
+aidoc-model = { path = "../../crates/aidoc-model" }
+aidoc-package = { path = "../../crates/aidoc-package" }
+rusqlite = { workspace = true }

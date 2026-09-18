@@ -48,10 +48,14 @@ name = "aidoc-cli"
 version = "0.1.0"
 dependencies = [
  "aidoc",
+ "aidoc-model",
+ "aidoc-package",
+ "aidoc-storage",
  "anyhow",
  "chrono",
  "clap",
  "indexmap 2.14.2",
+ "rusqlite",
  "serde",
  "serde_json",
 ]
@@ -118,6 +122,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 2.14.2",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "sha2",

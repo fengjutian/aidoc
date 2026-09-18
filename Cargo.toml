@@ -36,6 +36,7 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 indexmap = { version = "2.6", features = ["serde"] }
 toml = "0.8"
 walkdir = "2.5"
+schemars = { version = "0.8", features = ["indexmap"] }
 
 [profile.dev]
 opt-level = 0

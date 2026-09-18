@@ -24,7 +24,6 @@ export default defineConfig({
           react: ["react", "react-dom"],
           tiptap: [
             "@tiptap/react",
-            "@tiptap/pm",
             "@tiptap/starter-kit",
             "@tiptap/extension-link",
             "@tiptap/extension-placeholder",

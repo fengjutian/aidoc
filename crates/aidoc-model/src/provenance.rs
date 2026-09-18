@@ -3,9 +3,10 @@
 #![allow(clippy::large_enum_variant)] // Operation carries many optional AI fields.
 
 use indexmap::IndexMap;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ActorKind {
     Human,
@@ -13,7 +14,7 @@ pub enum ActorKind {
     Agent,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Actor {
     #[serde(rename = "type")]
     pub kind: ActorKind,
@@ -30,7 +31,7 @@ pub struct Actor {
 /// Stored as part of AI provenance so the operation can be replayed or
 /// audited. Only `name` is required; `arguments` and `output` are kept verbatim
 /// from the model so downstream consumers can inspect them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -40,7 +41,7 @@ pub struct ToolCall {
 }
 
 /// Provenance metadata — at minimum `type`, plus typed sub-records.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Provenance {
     Code {

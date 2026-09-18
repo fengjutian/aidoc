@@ -1,5 +1,6 @@
 //! Stable ID types used across the model.
 
+use schemars::{JsonSchema, SchemaGenerator, schema_for};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
@@ -60,6 +61,21 @@ pub enum AIDocError {
 #[serde(transparent)]
 pub struct NodeId(String);
 
+impl JsonSchema for NodeId {
+    fn schema_name() -> String {
+        "NodeId".into()
+    }
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        serde_json::from_value(serde_json::json!({
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "minLength": 1,
+            "description": "Stable node identifier (kebab-case, dot, underscore allowed)"
+        }))
+        .expect("NodeId schema is valid JSON")
+    }
+}
+
 impl NodeId {
     pub fn new(value: impl Into<String>) -> Result<Self> {
         let value = value.into();
@@ -102,6 +118,19 @@ impl From<&str> for NodeId {
 #[serde(transparent)]
 pub struct OpId(String);
 
+impl JsonSchema for OpId {
+    fn schema_name() -> String {
+        "OpId".into()
+    }
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        serde_json::from_value(serde_json::json!({
+            "type": "string",
+            "description": "Operation identifier (e.g. OP-105)"
+        }))
+        .expect("OpId schema is valid JSON")
+    }
+}
+
 impl OpId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -122,6 +151,20 @@ impl fmt::Display for OpId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RevisionId(String);
+
+impl JsonSchema for RevisionId {
+    fn schema_name() -> String {
+        "RevisionId".into()
+    }
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        serde_json::from_value(serde_json::json!({
+            "type": "string",
+            "pattern": "^R[0-9]+$",
+            "description": "Revision identifier (e.g. R105)"
+        }))
+        .expect("RevisionId schema is valid JSON")
+    }
+}
 
 impl RevisionId {
     pub fn new(value: impl Into<String>) -> Self {

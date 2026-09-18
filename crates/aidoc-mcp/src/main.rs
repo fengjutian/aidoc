@@ -199,8 +199,7 @@ async fn history(
         .filter(|s| !s.is_empty());
     with_doc(&state, |s, doc_id| {
         let revs = match &branch {
-            Some(name) => crud::list_revisions_by_branch(s.store.conn(), doc_id, name)
-                .str_err()?,
+            Some(name) => crud::list_revisions_by_branch(s.store.conn(), doc_id, name).str_err()?,
             None => crud::list_revisions(s.store.conn(), doc_id).str_err()?,
         };
         Ok(revs

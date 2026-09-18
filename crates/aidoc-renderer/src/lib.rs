@@ -42,11 +42,7 @@ pub fn render_html(
     out.push_str("</head>\n<body>\n");
 
     if let Some(b) = branch {
-        let _ = write!(
-            out,
-            "<aside class=\"aidoc-branch\">{}</aside>\n",
-            escape(b)
-        );
+        let _ = writeln!(out, "<aside class=\"aidoc-branch\">{}</aside>", escape(b));
     }
 
     let by_parent = group_by_parent(nodes);
@@ -349,7 +345,7 @@ mod tests {
     fn renders_minimal_doc() {
         let doc = Document::new("d1", "Demo", NodeId::from_validated("root"));
         let root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
-        let html = render_html(&doc, &[root], &[]);
+        let html = render_html(&doc, &[root], &[], None);
         assert!(html.contains("<h1"));
         assert!(html.contains("Demo"));
         assert!(html.ends_with("</html>\n"));
