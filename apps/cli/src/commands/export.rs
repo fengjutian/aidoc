@@ -6,7 +6,9 @@ use aidoc::storage::crud;
 use crate::session::Session;
 
 pub fn run(path: &str, out: &str, format: &str) -> Result<()> {
-    let fmt: ExportFormat = format.parse().map_err(|e: UnknownExportFormat| anyhow!(e))?;
+    let fmt: ExportFormat = format
+        .parse()
+        .map_err(|e: UnknownExportFormat| anyhow!(e))?;
 
     let s = Session::open(path)?;
     let m = &s.package.as_ref().unwrap().manifest;

@@ -17,7 +17,11 @@ fn binary_path() -> PathBuf {
     p.pop(); // apps/cli → apps
     p.pop(); // apps → repo root
     p.push("target");
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     p.push(profile);
     #[cfg(windows)]
     p.push("aidoc.exe");
@@ -30,8 +34,7 @@ fn binary_path() -> PathBuf {
 /// validator (empty node id), then save back.
 fn build_broken_package(path: &std::path::Path) {
     let mut pkg_path = path.to_path_buf();
-    let (mut package, mut store) =
-        aidoc::open_package(&mut pkg_path).expect("open .aidoc package");
+    let (mut package, mut store) = aidoc::open_package(&mut pkg_path).expect("open .aidoc package");
     store
         .tx::<_, _, AnyhowErr>(|tx| {
             tx.execute(

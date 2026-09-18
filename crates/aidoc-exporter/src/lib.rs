@@ -259,7 +259,10 @@ mod tests {
     #[test]
     fn format_parses_aliases() {
         assert_eq!("html".parse::<ExportFormat>().unwrap(), ExportFormat::Html);
-        assert_eq!("md".parse::<ExportFormat>().unwrap(), ExportFormat::Markdown);
+        assert_eq!(
+            "md".parse::<ExportFormat>().unwrap(),
+            ExportFormat::Markdown
+        );
         assert_eq!(
             "markdown".parse::<ExportFormat>().unwrap(),
             ExportFormat::Markdown

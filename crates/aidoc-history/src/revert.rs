@@ -78,7 +78,10 @@ pub fn revert_to(
     store.tx(|tx| {
         // 1. Overwrite live nodes with target snapshot.
         // Delete all current nodes for the doc.
-        tx.execute("DELETE FROM nodes WHERE doc_id = ?1", rusqlite::params![doc_id])?;
+        tx.execute(
+            "DELETE FROM nodes WHERE doc_id = ?1",
+            rusqlite::params![doc_id],
+        )?;
         for n in &target_nodes {
             crud::insert_node(tx, doc_id, n)?;
         }
@@ -93,10 +96,7 @@ pub fn revert_to(
                 change_type: ChangeType::Revert,
                 before: None,
                 after: Some(HashRef { hash: after }),
-                summary: Some(format!(
-                    "revert to {}",
-                    target_rev.id.as_str()
-                )),
+                summary: Some(format!("revert to {}", target_rev.id.as_str())),
             };
             crud::insert_change(tx, doc_id, &ch)?;
         }

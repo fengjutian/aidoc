@@ -94,13 +94,12 @@ impl ApplyContext<'_> {
     /// Convenience for the common "target must exist" lookup shared by
     /// Update / Rename / Move / Replace.
     fn require_target(&self, target: &NodeId) -> Result<Node, ApplyError> {
-        self.get_node(target)?
-            .ok_or_else(|| {
-                ApplyError::Store(aidoc_storage::StoreError::Integrity(format!(
-                    "target not found: {}",
-                    target.as_str()
-                )))
-            })
+        self.get_node(target)?.ok_or_else(|| {
+            ApplyError::Store(aidoc_storage::StoreError::Integrity(format!(
+                "target not found: {}",
+                target.as_str()
+            )))
+        })
     }
 }
 
@@ -119,12 +118,22 @@ impl OperationHandler for CreateHandler {
         OperationType::Create
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("create"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("create"))?;
         let patch = ctx.op.patch.clone().ok_or(ApplyError::MissingPatch)?;
         let node = materialize_create(&target, &patch)?;
         let after_hash = sha256_hex(node.content.as_bytes());
         ctx.insert_node(&node)?;
-        ctx.record_change(&target, ChangeType::Create, None, Some(&after_hash), "create node")?;
+        ctx.record_change(
+            &target,
+            ChangeType::Create,
+            None,
+            Some(&after_hash),
+            "create node",
+        )?;
         Ok(())
     }
 }
@@ -136,7 +145,11 @@ impl OperationHandler for UpdateHandler {
         OperationType::Update
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("update"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("update"))?;
         let patch = ctx.op.patch.clone().ok_or(ApplyError::MissingPatch)?;
         let mut node = ctx.require_target(&target)?;
         let before_hash = sha256_hex(node.content.as_bytes());
@@ -160,14 +173,24 @@ impl OperationHandler for DeleteHandler {
         OperationType::Delete
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("delete"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("delete"))?;
         let before_node = ctx.get_node(&target)?;
         let before_hash = before_node
             .as_ref()
             .map(|n| sha256_hex(n.content.as_bytes()))
             .unwrap_or_default();
         ctx.delete_node(&target)?;
-        ctx.record_change(&target, ChangeType::Delete, Some(&before_hash), None, "delete node")?;
+        ctx.record_change(
+            &target,
+            ChangeType::Delete,
+            Some(&before_hash),
+            None,
+            "delete node",
+        )?;
         Ok(())
     }
 }
@@ -179,7 +202,11 @@ impl OperationHandler for RenameHandler {
         OperationType::Rename
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("rename"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("rename"))?;
         let patch = ctx.op.patch.clone().ok_or(ApplyError::MissingPatch)?;
         let mut node = ctx.require_target(&target)?;
         let before_hash = sha256_hex(node.content.as_bytes());
@@ -203,7 +230,11 @@ impl OperationHandler for MoveHandler {
         OperationType::Move
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("move"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("move"))?;
         let patch = ctx.op.patch.clone().ok_or(ApplyError::MissingPatch)?;
         let mut node = ctx.require_target(&target)?;
         let before_hash = sha256_hex(node.content.as_bytes());
@@ -227,7 +258,11 @@ impl OperationHandler for ReplaceHandler {
         OperationType::Replace
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("replace"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("replace"))?;
         let patch = ctx.op.patch.clone().ok_or(ApplyError::MissingPatch)?;
         let mut node = ctx.require_target(&target)?;
         let before_hash = sha256_hex(node.content.as_bytes());
@@ -251,7 +286,11 @@ impl OperationHandler for SplitHandler {
         OperationType::Split
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let source = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("split"))?;
+        let source = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("split"))?;
         if ctx.op.targets.is_empty() {
             return Err(ApplyError::MissingSplitTargets);
         }
@@ -299,7 +338,11 @@ impl OperationHandler for MergeHandler {
         OperationType::Merge
     }
     fn apply(&self, ctx: &mut ApplyContext) -> Result<(), ApplyError> {
-        let target = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("merge"))?;
+        let target = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("merge"))?;
         if ctx.op.targets.is_empty() {
             return Err(ApplyError::MissingSplitTargets);
         }
@@ -315,7 +358,9 @@ impl OperationHandler for MergeHandler {
         for src in &sources {
             ctx.delete_node(src)?;
         }
-        let after_hash = ctx.get_content_hash(&target)?.unwrap_or(before_hash.clone());
+        let after_hash = ctx
+            .get_content_hash(&target)?
+            .unwrap_or(before_hash.clone());
         ctx.record_change(
             &target,
             ChangeType::Merge,
@@ -341,7 +386,11 @@ impl OperationHandler for LinkHandler {
             .first()
             .cloned()
             .ok_or(ApplyError::MissingSplitTargets)?;
-        let link_dst = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("link"))?;
+        let link_dst = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("link"))?;
         let rel = Relation {
             id: format!("rel-{}-{}", link_src.as_str(), link_dst.as_str()),
             source: link_src.clone(),
@@ -350,7 +399,13 @@ impl OperationHandler for LinkHandler {
             custom_kind: None,
         };
         ctx.insert_relation(&rel)?;
-        ctx.record_change(&link_src, ChangeType::RelationAdd, None, None, "link relation added")?;
+        ctx.record_change(
+            &link_src,
+            ChangeType::RelationAdd,
+            None,
+            None,
+            "link relation added",
+        )?;
         Ok(())
     }
 }
@@ -368,7 +423,11 @@ impl OperationHandler for UnlinkHandler {
             .first()
             .cloned()
             .ok_or(ApplyError::MissingSplitTargets)?;
-        let link_dst = ctx.op.target.clone().ok_or(ApplyError::MissingTarget("unlink"))?;
+        let link_dst = ctx
+            .op
+            .target
+            .clone()
+            .ok_or(ApplyError::MissingTarget("unlink"))?;
         let rel_id = format!("rel-{}-{}", link_src.as_str(), link_dst.as_str());
         ctx.delete_relation(&rel_id)?;
         ctx.record_change(

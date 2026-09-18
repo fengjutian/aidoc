@@ -25,11 +25,7 @@ impl Validator for StructureValidator {
                 if !ids.contains(p.as_str()) {
                     findings.push(Finding::new(
                         self.category(),
-                        format!(
-                            "node {} has missing parent {}",
-                            n.id.as_str(),
-                            p.as_str()
-                        ),
+                        format!("node {} has missing parent {}", n.id.as_str(), p.as_str()),
                     ));
                 }
                 children

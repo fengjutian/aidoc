@@ -17,4 +17,5 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+chrono = { workspace = true }
 indexmap = { workspace = true }
