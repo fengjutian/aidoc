@@ -1,6 +1,7 @@
 pub mod apply;
 pub mod demo;
 pub mod diff;
+pub mod example;
 pub mod export;
 pub mod history;
 pub mod info;

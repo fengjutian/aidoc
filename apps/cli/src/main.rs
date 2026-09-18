@@ -70,8 +70,12 @@ enum Cmd {
     /// For v0.1 this prints the node contents at both revisions side-by-side.
     Diff {
         path: String,
-        from: String,
-        to: String,
+        /// Source revision (R###). Defaults to the revision immediately before `to`.
+        #[arg(default_value = None)]
+        from: Option<String>,
+        /// Target revision (R###). Defaults to the current head.
+        #[arg(default_value = None)]
+        to: Option<String>,
     },
 
     /// Revert to a previous revision (always creates a new revision).
@@ -104,6 +108,24 @@ enum Cmd {
         #[arg(long)]
         export_html: Option<String>,
     },
+
+    /// Scaffold one of the bundled example documents.
+    ///
+    /// `aidoc example order-system examples/order-system.aidoc`
+    /// writes a brand-new `.aidoc` package pre-populated with the order-system
+    /// demo tree. Currently bundled:
+    ///   - order-system
+    ///   - api-system
+    ///   - knowledge-graph
+    Example {
+        /// Template name.
+        template: String,
+        /// Destination path.
+        path: String,
+        /// Also export the resulting HTML here.
+        #[arg(long)]
+        export_html: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -117,12 +139,15 @@ fn main() -> Result<()> {
             commands::apply::run(&path, op_file.as_deref(), print_revision)
         }
         Cmd::History { path, json } => commands::history::run(&path, json),
-        Cmd::Diff { path, from, to } => commands::diff::run(&path, &from, &to),
+        Cmd::Diff { path, from, to } => commands::diff::run(&path, from.as_deref(), to.as_deref()),
         Cmd::Revert { path, target, reason } => {
             commands::revert::run(&path, &target, reason.as_deref())
         }
         Cmd::Validate { path } => commands::validate::run(&path),
         Cmd::Export { path, out, format } => commands::export::run(&path, &out, &format),
         Cmd::Demo { path, export_html } => commands::demo::run(&path, export_html.as_deref()),
+        Cmd::Example { template, path, export_html } => {
+            commands::example::run(&template, &path, export_html.as_deref())
+        }
     }
 }

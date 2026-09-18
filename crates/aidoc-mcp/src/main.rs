@@ -17,7 +17,8 @@ use aidoc_storage::{crud, Store};
 use futures::future::BoxFuture;
 use rmcp::{
     model::*,
-    service::RequestContext, ErrorData, RoleServer, ServerHandler,
+    service::{RequestContext, ServiceExt},
+    ErrorData, RoleServer, ServerHandler,
 };
 use serde::Serialize;
 
@@ -267,7 +268,8 @@ struct AIDocServer {
 
 struct ToolEntry {
     description: &'static str,
-    handler: fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> BoxFuture<'static, Result<serde_json::Value, String>>,
+    handler:
+        Box<dyn Fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> BoxFuture<'static, Result<serde_json::Value, String>> + Send + Sync>,
 }
 
 impl AIDocServer {
@@ -275,39 +277,86 @@ impl AIDocServer {
         let state = Arc::new(ServerState::default());
         let mut tools: HashMap<String, ToolEntry> = HashMap::new();
 
-        let mut reg = |name: &'static str, desc: &'static str, h: ToolEntry| {
-            tools.insert(name.into(), ToolEntry { description: desc, handler: h.handler });
-        };
-
-        // No-arg tools: wrap the closure to discard the args map.
-        let no_args = |h: fn(Arc<ServerState>) -> _| -> ToolEntry {
-            ToolEntry { description: "", handler: |s, _| Box::pin(h(s)) }
-        };
-
-        // With-args tools: pass through.
-        let with_args = |h: fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> _| -> ToolEntry {
-            ToolEntry { description: "", handler: |s, args| Box::pin(h(s, args)) }
-        };
-
-        reg("init_aidoc", "Create a new .aidoc package and open it.", with_args(init_aidoc));
-        reg("open_aidoc", "Open an existing .aidoc package.", with_args(open_aidoc));
-        reg("save_aidoc", "Persist the current document.", no_args(save_aidoc));
-        reg("list_nodes", "List every node in the current document.", no_args(list_nodes));
-        reg("show_node", "Show one node by id.", with_args(show_node));
-        reg("create_node", "Create a new node with content.", with_args(create_node));
-        reg("update_node", "Update a node's content.", with_args(update_node));
-        reg("delete_node", "Delete a node.", with_args(delete_node));
-        reg("apply_operation", "Apply a raw Operation JSON.", with_args(apply_operation_tool));
-        reg("history", "List revision history.", no_args(history));
-        reg("revert", "Revert to a previous revision.", with_args(revert_tool));
-        reg("export_html", "Render as HTML.", no_args(export_html));
-        reg("validate", "Run all validators.", no_args(validate));
+        tools.insert(
+            "init_aidoc".into(),
+            tool_entry("Create a new .aidoc package and open it.", |s, a| init_aidoc(s, a)),
+        );
+        tools.insert(
+            "open_aidoc".into(),
+            tool_entry("Open an existing .aidoc package.", |s, a| open_aidoc(s, a)),
+        );
+        tools.insert(
+            "save_aidoc".into(),
+            tool_entry("Persist the current document.", |s, _| save_aidoc(s)),
+        );
+        tools.insert(
+            "list_nodes".into(),
+            tool_entry("List every node in the current document.", |s, _| list_nodes(s)),
+        );
+        tools.insert(
+            "show_node".into(),
+            tool_entry("Show one node by id.", |s, a| show_node(s, a)),
+        );
+        tools.insert(
+            "create_node".into(),
+            tool_entry("Create a new node with content.", |s, a| create_node(s, a)),
+        );
+        tools.insert(
+            "update_node".into(),
+            tool_entry("Update a node's content.", |s, a| update_node(s, a)),
+        );
+        tools.insert(
+            "delete_node".into(),
+            tool_entry("Delete a node by id.", |s, a| delete_node(s, a)),
+        );
+        tools.insert(
+            "apply_operation".into(),
+            tool_entry(
+                "Apply a raw Operation JSON object.",
+                |s, a| apply_operation_tool(s, a),
+            ),
+        );
+        tools.insert(
+            "history".into(),
+            tool_entry("List revision history.", |s, _| history(s)),
+        );
+        tools.insert(
+            "revert".into(),
+            tool_entry("Revert to a previous revision.", |s, a| revert_tool(s, a)),
+        );
+        tools.insert(
+            "export_html".into(),
+            tool_entry("Render the document as standalone HTML.", |s, _| export_html(s)),
+        );
+        tools.insert(
+            "validate".into(),
+            tool_entry("Run all validators.", |s, _| validate(s)),
+        );
 
         Self {
             state,
             tools: Arc::new(tools),
         }
     }
+}
+
+fn tool_entry<F, Fut, T>(description: &'static str, h: F) -> ToolEntry
+where
+    F: Fn(Arc<ServerState>, serde_json::Map<String, serde_json::Value>) -> Fut + Send + Sync + Clone + 'static,
+    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
+    T: Serialize + Send + 'static,
+{
+    let handler = move |s: Arc<ServerState>, args: serde_json::Map<String, serde_json::Value>| -> BoxFuture<'static, Result<serde_json::Value, String>> {
+        let h = h.clone();
+        let fut = async move {
+            match h(s, args).await {
+                Ok(v) => serde_json::to_value(v).map_err(|e| format!("serialize: {e}")),
+                Err(e) => Err(e),
+            }
+        };
+        Box::pin(fut)
+    };
+    ToolEntry { description, handler: Box::new(handler) }
 }
 
 // ---------- ServerHandler impl ----------
@@ -333,15 +382,14 @@ impl ServerHandler for AIDocServer {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        let schema = std::sync::Arc::new(serde_json::Map::new());
         let tools = self
             .tools
             .iter()
             .map(|(name, entry)| {
-                Tool::new(
-                    name.clone(),
-                    Some(entry.description.into()),
-                    EmptyInputSchema,
-                )
+                let mut t = Tool::new(name.clone(), entry.description, schema.clone());
+                t.description = Some(entry.description.into());
+                t
             })
             .collect();
         Ok(ListToolsResult { tools, ..Default::default() })
@@ -361,10 +409,8 @@ impl ServerHandler for AIDocServer {
                 ))]));
             }
         };
-        let args = match request.arguments {
-            Some(map) => (*map).clone(),
-            None => serde_json::Map::new(),
-        };
+        let args: serde_json::Map<String, serde_json::Value> =
+            request.arguments.unwrap_or_default();
         let state = self.state.clone();
         match (entry.handler)(state, args).await {
             Ok(serde_json::Value::Null) => {

@@ -17,7 +17,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "process", "sync"] }
 futures = "0.3"
 rmcp = { version = "0.3", features = ["server", "transport-io"] }
 
