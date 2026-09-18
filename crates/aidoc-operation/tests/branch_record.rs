@@ -87,10 +87,7 @@ fn branch_rejects_empty_name() {
     let op = branch_op("OP-101", "R000", "");
     let err = apply_operation(&mut store, "test-doc", op).expect_err("empty name rejected");
     let msg = format!("{err}");
-    assert!(
-        msg.contains("branch name"),
-        "unexpected error: {msg}"
-    );
+    assert!(msg.contains("branch name"), "unexpected error: {msg}");
 }
 
 #[test]
@@ -99,10 +96,7 @@ fn branch_rejects_main_name() {
     let op = branch_op("OP-102", "R000", "main");
     let err = apply_operation(&mut store, "test-doc", op).expect_err("main rejected");
     let msg = format!("{err}");
-    assert!(
-        msg.contains("not 'main'"),
-        "unexpected error: {msg}"
-    );
+    assert!(msg.contains("not 'main'"), "unexpected error: {msg}");
 }
 
 #[test]

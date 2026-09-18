@@ -225,6 +225,7 @@ fn seed_initial_revision(store: &mut Store, doc_id: &str) -> Result<(), String> 
         operation: OpId::new("OP-000"),
         created_at: chrono::Utc::now(),
         message: Some("seed".into()),
+        branch: None,
     };
     store
         .tx::<_, _, AnyhowErr>(|tx| {

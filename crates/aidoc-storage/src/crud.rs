@@ -311,12 +311,7 @@ pub fn insert_revision(
         tx.execute(
             r#"INSERT INTO revision_branches(doc_id, revision, branch, created_at)
                VALUES(?1, ?2, ?3, ?4)"#,
-            rusqlite::params![
-                doc_id,
-                rev.id.as_str(),
-                branch,
-                rev.created_at.to_rfc3339(),
-            ],
+            rusqlite::params![doc_id, rev.id.as_str(), branch, rev.created_at.to_rfc3339(),],
         )?;
     }
     // Side-table: every parent (multi-parent merges). Linear revisions still

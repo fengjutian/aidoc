@@ -364,9 +364,10 @@ pub fn apply_operation(
                     .and_then(|p| p.attributes.get("branch").cloned())
                     .or_else(|| op.reason.clone())
                     .ok_or_else(|| {
-                        ApplyError::Invalid(format!(
+                        ApplyError::Invalid(
                             "branch op needs a branch name (patch.attributes[\"branch\"] or reason)"
-                        ))
+                                .into(),
+                        )
                     })?;
                 if branch_name.trim().is_empty() || branch_name == "main" {
                     return Err(ApplyError::Invalid(format!(
