@@ -142,6 +142,7 @@ fn update_node(
         op_type: OperationType::Update,
         target: Some(NodeId::from_validated(target)),
         expected_revision: RevisionId::new(head),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::human(Some("desktop".into())),

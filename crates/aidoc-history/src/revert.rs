@@ -65,6 +65,7 @@ pub fn revert_to(
         op_type: OperationType::Revert,
         target: None,
         expected_revision: RevisionId::new(head.clone()),
+        expected_hash: None,
         target_revision: Some(target_rev.id.clone()),
         targets: Vec::new(),
         actor: Provenance::human(None),

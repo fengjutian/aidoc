@@ -34,6 +34,7 @@ pub fn run(path: &str, name: &str, reason: Option<&str>) -> Result<()> {
         op_type: OperationType::Branch,
         target: None,
         expected_revision: RevisionId::new(head.clone()),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::human(Some("cli".into())),

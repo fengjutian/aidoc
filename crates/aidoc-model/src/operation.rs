@@ -72,6 +72,11 @@ pub struct Operation {
     pub target: Option<NodeId>,
     /// Optimistic-concurrency check.
     pub expected_revision: RevisionId,
+    /// Optional content-hash guard (spec §26). When set, the op only applies if
+    /// the target node's stored `content_hash` matches — otherwise the engine
+    /// raises a `CONTENT_CONFLICT` instead of silently overwriting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_hash: Option<String>,
     /// For revert only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_revision: Option<RevisionId>,

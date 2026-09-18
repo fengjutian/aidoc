@@ -45,6 +45,7 @@ fn create_op() -> Operation {
         op_type: OperationType::Create,
         target: Some(NodeId::from_validated("new-node")),
         expected_revision: RevisionId::new("R000"),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::human(None),

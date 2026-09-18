@@ -11,10 +11,12 @@
 
 pub mod apply;
 pub mod check;
+pub mod conflict;
 pub mod engine;
 pub mod handler;
 
 pub use apply::{ApplyError, ApplyOutcome, apply_operation, apply_with_registry};
-pub use check::{CheckError, check_conflict, check_revision};
+pub use check::{CheckError, check_all, check_conflict, check_revision};
+pub use conflict::{Conflict, ConflictKind};
 pub use engine::{OperationError, OperationResult};
 pub use handler::{ApplyContext, HandlerRegistry, OperationHandler};

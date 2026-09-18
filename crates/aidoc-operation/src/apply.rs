@@ -15,6 +15,7 @@ use aidoc_model::{
 
 use aidoc_storage::{Store, crud};
 
+use crate::conflict::Conflict;
 use crate::handler::{ApplyContext, HandlerRegistry};
 
 #[derive(Debug, Error)]
@@ -24,6 +25,10 @@ pub enum ApplyError {
 
     #[error(transparent)]
     Store(#[from] aidoc_storage::StoreError),
+
+    /// A §25/§26/§36 conflict — the op was rejected, nothing was written.
+    #[error("{0}")]
+    Conflict(#[from] Conflict),
 
     #[error("sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
@@ -73,9 +78,14 @@ pub fn apply_with_registry(
     op: Operation,
     registry: &HandlerRegistry,
 ) -> Result<ApplyOutcome, ApplyError> {
-    // 1. Optimistic concurrency check (read-only, no tx needed).
-    crate::check::check_revision(store, doc_id, &op)
-        .map_err(|e| ApplyError::Store(aidoc_storage::StoreError::Integrity(e.to_string())))?;
+    // 1. Optimistic concurrency + node/content/structure/relation preconditions
+    //    (read-only, no tx needed). A §36 conflict surfaces as ApplyError::Conflict
+    //    so callers can render the machine-readable shape; anything else keeps the
+    //    pre-existing Store(Integrity) wrapping.
+    crate::check::check_all(store, doc_id, &op).map_err(|e| match e {
+        crate::check::CheckError::Conflict(c) => ApplyError::Conflict(c),
+        other => ApplyError::Store(aidoc_storage::StoreError::Integrity(other.to_string())),
+    })?;
 
     // 2. Materialize the new revision id BEFORE we enter the tx.
     let next_seq = crud::max_revision_seq(store.conn(), doc_id).map_err(ApplyError::Store)?;

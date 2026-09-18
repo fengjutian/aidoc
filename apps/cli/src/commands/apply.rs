@@ -2,7 +2,7 @@ use std::io::Read;
 
 use anyhow::{Context, Result};
 
-use aidoc::{Operation, apply_operation};
+use aidoc::{ApplyError, Operation, apply_operation};
 
 use crate::session::Session;
 
@@ -23,7 +23,17 @@ pub fn run(path: &str, op_file: Option<&str>, print_revision: bool) -> Result<()
 
     let mut s = Session::open(path)?;
     let doc_id = s.package.as_ref().unwrap().manifest.document.id.clone();
-    let outcome = apply_operation(&mut s.store, &doc_id, op)?;
+    let outcome = match apply_operation(&mut s.store, &doc_id, op) {
+        Ok(o) => o,
+        // §25/§36: print the machine-readable conflict shape to stderr so a
+        // caller (or an agent) can react to it, then fail with a non-zero exit.
+        Err(ApplyError::Conflict(c)) => {
+            let json = serde_json::to_string_pretty(&c.to_json())?;
+            eprintln!("{json}");
+            return Err(anyhow::anyhow!("{c}"));
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     // bump manifest head + updated_at, then save
     if let Some(pkg) = s.package.as_mut() {

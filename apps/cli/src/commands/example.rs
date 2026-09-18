@@ -163,6 +163,7 @@ pub fn run(template: &str, path: &str, export_html: Option<&str>) -> Result<()> 
             op_type: OperationType::Create,
             target: Some(NodeId::from_validated(tpl.id)),
             expected_revision: head.clone(),
+            expected_hash: None,
             target_revision: None,
             targets: vec![],
             actor: Provenance::human(Some(format!("example:{template}"))),

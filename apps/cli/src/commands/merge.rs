@@ -45,6 +45,7 @@ pub fn run(path: &str, branch: &str, reason: Option<&str>) -> Result<()> {
         op_type: OperationType::Branch,
         target: None,
         expected_revision: aidoc::id::RevisionId::new(head.clone()),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: aidoc::Provenance::human(Some("cli".into())),

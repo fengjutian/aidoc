@@ -52,6 +52,7 @@ fn create_update_revert_loop() {
         op_type: OperationType::Create,
         target: Some(NodeId::from_validated("database")),
         expected_revision: RevisionId::new("R000"),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
@@ -74,6 +75,7 @@ fn create_update_revert_loop() {
         op_type: OperationType::Update,
         target: Some(NodeId::from_validated("database")),
         expected_revision: out1.revision.clone(),
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::ai("test-agent", Some("test-model".into())),
@@ -141,6 +143,7 @@ fn create_update_revert_loop() {
         op_type: OperationType::Update,
         target: Some(NodeId::from_validated("database")),
         expected_revision: RevisionId::new("R000"), // stale!
+        expected_hash: None,
         target_revision: None,
         targets: vec![],
         actor: Provenance::human(None),
