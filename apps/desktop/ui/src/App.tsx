@@ -3,17 +3,29 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   AlertCircle,
   Clock,
+  Copy,
   Download,
+  ExternalLink,
   FilePlus,
   FileText,
   FolderOpen,
   Hash,
+  Plus,
   Save,
   Sparkles,
+  Trash2,
   Undo2,
 } from "lucide-react";
 
+import { CommandPalette } from "@/components/CommandPalette";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -63,6 +75,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [initPath, setInitPath] = useState("");
   const [title, setTitle] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const refresh = async () => {
     if (!info) return;
@@ -85,6 +98,18 @@ export default function App() {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.doc_id]);
+
+  // Global ⌘K / Ctrl+K → open command palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const onInit = async () => {
     setError(null);
@@ -113,6 +138,36 @@ export default function App() {
   const onUpdate = async (target: string, html: string) => {
     try {
       await invoke<string>("update_node", { target, content: html });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onCreateNode = async (id: string, kind: string, content: string) => {
+    setError(null);
+    try {
+      await invoke<string>("create_node", { id, kind, content });
+      setActiveId(id);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onDeleteNode = async (target: string) => {
+    setError(null);
+    try {
+      await invoke<string>("delete_node", { target });
+      if (activeId === target) setActiveId(null);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const onCopyId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
     } catch (e) {
       setError(String(e));
     }
@@ -214,6 +269,20 @@ export default function App() {
 
         <Tooltip>
           <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setPaletteOpen(true)}
+              className="text-muted-foreground"
+            >
+              <span className="font-mono text-xs">⌘K</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open command palette</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
             <Button size="sm" variant="outline" onClick={onSave}>
               <Save className="mr-1.5 h-3.5 w-3.5" />
               Save
@@ -247,6 +316,22 @@ export default function App() {
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <FileText className="h-3.5 w-3.5" />
                 Nodes
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="ml-auto h-5 w-5"
+                      onClick={() => {
+                        const next = `node-${nodes.length + 1}`;
+                        void onCreateNode(next, "section", "");
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Add new section node</TooltipContent>
+                </Tooltip>
               </div>
               <ul className="space-y-0.5">
                 {nodes
@@ -256,19 +341,53 @@ export default function App() {
                     const Icon = kindIcon(n.kind);
                     return (
                       <li key={n.id}>
-                        <button
-                          onClick={() => setActiveId(n.id)}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
-                            n.id === activeId && "bg-accent font-medium text-accent-foreground",
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{n.id}</span>
-                          <span className="ml-auto text-[10px] uppercase text-muted-foreground">
-                            {n.kind}
-                          </span>
-                        </button>
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <button
+                              onClick={() => setActiveId(n.id)}
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
+                                n.id === activeId &&
+                                  "bg-accent font-medium text-accent-foreground",
+                              )}
+                            >
+                              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{n.id}</span>
+                              <span className="ml-auto text-[10px] uppercase text-muted-foreground">
+                                {n.kind}
+                              </span>
+                            </button>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-48">
+                            <ContextMenuItem
+                              onSelect={() => {
+                                setActiveId(n.id);
+                              }}
+                            >
+                              <ExternalLink className="text-muted-foreground" />
+                              Open in editor
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onSelect={() => {
+                                void onCopyId(n.id);
+                              }}
+                            >
+                              <Copy className="text-muted-foreground" />
+                              Copy node ID
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              disabled={n.id === "root"}
+                              onSelect={() => {
+                                void onDeleteNode(n.id);
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 />
+                              Delete node
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       </li>
                     );
                   })}
@@ -334,6 +453,32 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        nodes={nodes}
+        revs={revs}
+        info={info}
+        onSelectNode={(id) => {
+          setActiveId(id);
+        }}
+        onSave={() => {
+          void onSave();
+        }}
+        onExportHtml={() => {
+          void onExportHtml();
+        }}
+        onRevert={(id) => {
+          void onRevert(id);
+        }}
+        onCreateNode={(id, kind, content) => {
+          void onCreateNode(id, kind, content);
+        }}
+        onDeleteNode={(target) => {
+          void onDeleteNode(target);
+        }}
+      />
     </TooltipProvider>
   );
 }

@@ -3,7 +3,27 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import {
+  Bold,
+  Code,
+  Code2,
+  Heading2,
+  Heading3,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  type LucideIcon,
+} from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { DiagramView } from "./DiagramView";
 
 type Kind =
@@ -107,55 +127,104 @@ function RichEditor({ kind, content, onChange }: Props) {
   return (
     <div className="node-editor">
       {editor && (
-        <>
+        <TooltipProvider delayDuration={250}>
           {!isCode && <Toolbar editor={editor} />}
           <EditorContent editor={editor} />
-        </>
+        </TooltipProvider>
       )}
     </div>
   );
 }
 
 function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>> }) {
-  const Btn = ({ onClick, active, label }: { onClick: () => void; active: boolean; label: string }) => (
-    <button onClick={onClick} className={active ? "active" : ""}>
-      {label}
-    </button>
+  const Tip = ({
+    onClick,
+    active,
+    label,
+    Icon,
+  }: {
+    onClick: () => void;
+    active: boolean;
+    label: string;
+    Icon: LucideIcon;
+  }) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onClick}
+          className={cn(
+            "h-8 w-8",
+            active && "bg-accent text-accent-foreground",
+          )}
+          aria-label={label}
+          aria-pressed={active}
+        >
+          <Icon className="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
   return (
-    <div className="rich-toolbar">
-      <Btn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} label="B" />
-      <Btn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} label="I" />
-      <Btn onClick={() => editor.chain().focus().toggleCode().run()} active={editor.isActive("code")} label="</>" />
-      <Btn
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted/40 px-2 py-1">
+      <Tip
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        active={editor.isActive("bold")}
+        label="Bold"
+        Icon={Bold}
+      />
+      <Tip
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        active={editor.isActive("italic")}
+        label="Italic"
+        Icon={Italic}
+      />
+      <Tip
+        onClick={() => editor.chain().focus().toggleCode().run()}
+        active={editor.isActive("code")}
+        label="Inline code"
+        Icon={Code}
+      />
+      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <Tip
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         active={editor.isActive("heading", { level: 2 })}
-        label="H2"
+        label="Heading 2"
+        Icon={Heading2}
       />
-      <Btn
+      <Tip
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         active={editor.isActive("heading", { level: 3 })}
-        label="H3"
+        label="Heading 3"
+        Icon={Heading3}
       />
-      <Btn
+      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <Tip
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         active={editor.isActive("bulletList")}
-        label="• list"
+        label="Bullet list"
+        Icon={List}
       />
-      <Btn
+      <Tip
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         active={editor.isActive("orderedList")}
-        label="1. list"
+        label="Ordered list"
+        Icon={ListOrdered}
       />
-      <Btn
+      <Tip
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         active={editor.isActive("blockquote")}
-        label="❝"
+        label="Blockquote"
+        Icon={Quote}
       />
-      <Btn
+      <Tip
         onClick={() => editor.chain().focus().toggleCodeBlock().run()}
         active={editor.isActive("codeBlock")}
-        label="{}"
+        label="Code block"
+        Icon={Code2}
       />
     </div>
   );

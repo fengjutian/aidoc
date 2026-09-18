@@ -74,19 +74,6 @@
   height: 100%;
 }
 
-.rich-toolbar {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted));
-}
-
-.rich-toolbar button.active {
-  background: hsl(var(--primary) / 0.15);
-  border-color: hsl(var(--primary) / 0.6);
-}
-
 .aidoc-rich {
   flex: 1;
   outline: none;
@@ -167,9 +154,4 @@
   background: transparent;
   color: inherit;
   resize: none;
-}
-
-.diagram-edit .actions, .diagram-view .actions {
-  display: flex;
-  gap: 0.5rem;
 }

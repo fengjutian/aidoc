@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import mermaid from "mermaid";
+import { Eye, Pencil, Play, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 // Initialise once.
 mermaid.initialize({
@@ -56,24 +60,34 @@ export function DiagramView({ source, onChange, editable = true }: Props) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
+          className="h-full min-h-[280px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
-        <div className="actions">
-          <button
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
             onClick={() => {
               onChange?.(draft);
               setEditing(false);
             }}
           >
-            render
-          </button>
-          <button
+            <Play className="mr-1.5 h-3.5 w-3.5" />
+            Render
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => {
               setDraft(source);
               setEditing(false);
             }}
           >
-            cancel
-          </button>
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Cancel
+          </Button>
+          <Separator orientation="vertical" className="mx-1 h-5" />
+          <span className="text-xs text-muted-foreground">
+            Mermaid source · <code className="font-mono">{draft.length}</code> chars
+          </span>
         </div>
       </div>
     );
@@ -86,10 +100,21 @@ export function DiagramView({ source, onChange, editable = true }: Props) {
         className="mermaid-svg"
         dangerouslySetInnerHTML={{ __html: svg ?? "" }}
       />
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      )}
       {editable && (
-        <div className="actions">
-          <button onClick={() => setEditing(true)}>edit source</button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            Edit source
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            <Eye className="mr-1 inline h-3 w-3" />
+            Live preview
+          </span>
         </div>
       )}
     </div>

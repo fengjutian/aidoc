@@ -6,6 +6,7 @@
 use aidoc::{
     Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch, Provenance, Revision,
     RevisionId, apply_operation, create_package, open_package, revert_to, save_package,
+    validator::{ValidationCategory, validate as core_validate},
 };
 use aidoc_storage::{Store, crud};
 
@@ -173,6 +174,103 @@ fn revert(state: tauri::State<'_, AppState>, target: String) -> Result<String, S
     Ok(out.new_revision.as_str().to_owned())
 }
 
+#[derive(Debug, Serialize)]
+struct ValidationFindingDto {
+    category: String,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ValidationReportDto {
+    clean: bool,
+    total: usize,
+    findings: Vec<ValidationFindingDto>,
+}
+
+#[tauri::command]
+fn validate_aidoc(state: tauri::State<'_, AppState>) -> Result<ValidationReportDto, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let report = core_validate(&s.store, &doc_id).map_err(err)?;
+    Ok(ValidationReportDto {
+        clean: report.is_clean(),
+        total: report.total_errors(),
+        findings: report
+            .findings
+            .into_iter()
+            .map(|f| ValidationFindingDto {
+                category: match f.category {
+                    ValidationCategory::Identity => "identity",
+                    ValidationCategory::Structure => "structure",
+                    ValidationCategory::Relation => "relation",
+                    ValidationCategory::Revision => "revision",
+                    ValidationCategory::CodeRef => "code-ref",
+                }
+                .to_string(),
+                message: f.message,
+            })
+            .collect(),
+    })
+}
+
+fn build_op(
+    store: &Store,
+    doc_id: &str,
+    op_type: OperationType,
+    target: Option<NodeId>,
+    patch: Option<Patch>,
+    reason: &str,
+) -> Result<Operation, String> {
+    let head = crud::head_revision(store.conn(), doc_id)
+        .map_err(err)?
+        .ok_or_else(|| err("no head revision"))?;
+    Ok(Operation {
+        id: OpId::new(format!("OP-{}", chrono::Utc::now().timestamp_millis())),
+        op_type,
+        target,
+        expected_revision: RevisionId::new(head),
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![],
+        actor: Provenance::human(Some("desktop".into())),
+        patch,
+        reason: Some(reason.into()),
+    })
+}
+
+#[tauri::command]
+fn create_node(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    kind: String,
+    content: String,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let target = NodeId::from_validated(&id);
+    let mut patch = Patch::default();
+    patch.content = Some(content);
+    patch.semantic_type = Some(kind);
+    let op = build_op(&s.store, &doc_id, OperationType::Create, Some(target.clone()), Some(patch), "UI create")?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(target.as_str().to_owned())
+}
+
+#[tauri::command]
+fn delete_node(state: tauri::State<'_, AppState>, target: String) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let target_id = NodeId::from_validated(&target);
+    let op = build_op(&s.store, &doc_id, OperationType::Delete, Some(target_id), None, "UI delete")?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
 #[tauri::command]
 fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let g = state.inner.lock().unwrap();
@@ -254,6 +352,9 @@ pub fn run() {
             update_node,
             revert,
             export_html,
+            validate_aidoc,
+            create_node,
+            delete_node,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");
