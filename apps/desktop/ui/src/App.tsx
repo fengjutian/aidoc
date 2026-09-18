@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import { AiChat } from "@/components/AiChat";
+import { BranchDialog } from "@/components/BranchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
 import { RevisionDiff } from "@/components/RevisionDiff";
 import { SaveStatus } from "@/components/SaveStatus";
@@ -94,6 +95,7 @@ export default function App() {
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
   const [docPath, setDocPath] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
