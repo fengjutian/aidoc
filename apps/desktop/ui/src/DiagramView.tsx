@@ -4,14 +4,18 @@ import { Eye, Pencil, Play, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useTheme } from "@/hooks/useTheme";
 
-// Initialise once.
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "default",
-  fontFamily: "ui-sans-serif, system-ui, sans-serif",
-  securityLevel: "loose",
-});
+// Mermaid re-init happens when the resolved theme changes. Mermaid caches its
+// internal state per-theme, so we have to invalidate + re-initialise on switch.
+function applyMermaidTheme(resolved: "light" | "dark") {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: resolved === "dark" ? "dark" : "default",
+    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    securityLevel: "loose",
+  });
+}
 
 interface Props {
   source: string;
@@ -25,10 +29,15 @@ interface Props {
  */
 export function DiagramView({ source, onChange, editable = true }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const { resolved } = useTheme();
   const [draft, setDraft] = useState(source);
   const [error, setError] = useState<string | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    applyMermaidTheme(resolved);
+  }, [resolved]);
 
   useEffect(() => {
     if (editing) return;
@@ -51,7 +60,7 @@ export function DiagramView({ source, onChange, editable = true }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [source, editing]);
+  }, [source, editing, resolved]);
 
   if (editing) {
     return (
