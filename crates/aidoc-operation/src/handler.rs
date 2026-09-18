@@ -556,6 +556,18 @@ fn apply_patch_to_node(node: &mut Node, patch: &Patch) {
         node.semantic_type = Some(st.clone());
     }
     for (k, v) in &patch.attributes {
-        node.attributes.insert(k.clone(), v.clone());
+        // `"parent"` is the reparent convention shared with
+        // `check::check_move_structure`: it retargets the structural parent
+        // instead of landing in the free-form attribute bag. An empty value
+        // detaches the node (moves it up to the document root).
+        if k == "parent" {
+            node.parent = if v.is_empty() {
+                None
+            } else {
+                Some(NodeId::from_validated(v.clone()))
+            };
+        } else {
+            node.attributes.insert(k.clone(), v.clone());
+        }
     }
 }

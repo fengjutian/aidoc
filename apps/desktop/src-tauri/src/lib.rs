@@ -12,6 +12,7 @@ use aidoc::{
 use aidoc_storage::{Store, crud};
 
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
@@ -41,6 +42,7 @@ struct NodeDto {
     parent: Option<String>,
     position: u32,
     content: String,
+    attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,6 +52,40 @@ struct RevisionDto {
     operation: String,
     created_at: String,
     message: Option<String>,
+    branch: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RelationDto {
+    id: String,
+    source: String,
+    target: String,
+    kind: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DiffEntryDto {
+    node: String,
+    status: String,
+    before: Option<String>,
+    after: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DiffReportDto {
+    from: String,
+    to: String,
+    added: usize,
+    removed: usize,
+    changed: usize,
+    entries: Vec<DiffEntryDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct BranchDto {
+    name: String,
+    head: Option<String>,
+    revisions: usize,
 }
 
 fn err<E: std::fmt::Display>(s: E) -> String {
@@ -205,16 +241,7 @@ fn list_nodes(state: tauri::State<'_, AppState>) -> Result<Vec<NodeDto>, String>
     let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
     let nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
-    Ok(nodes
-        .into_iter()
-        .map(|n| NodeDto {
-            id: n.id.as_str().to_owned(),
-            kind: format!("{:?}", n.kind).to_lowercase(),
-            parent: n.parent.as_ref().map(|p| p.as_str().to_owned()),
-            position: n.position,
-            content: n.content,
-        })
-        .collect())
+    Ok(nodes.into_iter().map(node_to_dto).collect())
 }
 
 #[tauri::command]
@@ -231,6 +258,7 @@ fn list_revisions(state: tauri::State<'_, AppState>) -> Result<Vec<RevisionDto>,
             operation: r.operation.as_str().to_owned(),
             created_at: r.created_at.to_rfc3339(),
             message: r.message,
+            branch: r.branch,
         })
         .collect())
 }
@@ -355,14 +383,22 @@ fn create_node(
     id: String,
     kind: String,
     content: String,
+    parent: Option<String>,
 ) -> Result<String, String> {
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
     let target = NodeId::from_validated(&id);
+    let node_kind = parse_kind(&kind)?;
     let mut patch = Patch::default();
     patch.content = Some(content);
     patch.semantic_type = Some(kind);
+    patch.kind = Some(node_kind);
+    // `"parent"` is the reparent convention honoured by the Create/Move
+    // handlers; omit it to leave the node detached at the document root.
+    if let Some(p) = parent {
+        patch.attributes.insert("parent".into(), p);
+    }
     let op = build_op(&s.store, &doc_id, OperationType::Create, Some(target.clone()), Some(patch), "UI create")?;
     let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
     s.package.manifest.set_revision(out.revision.as_str());
@@ -432,6 +468,7 @@ fn move_node(
     state: tauri::State<'_, AppState>,
     target: String,
     new_position: u32,
+    new_parent: Option<String>,
 ) -> Result<String, String> {
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
@@ -439,6 +476,11 @@ fn move_node(
     let target_id = NodeId::from_validated(&target);
     let mut patch = Patch::default();
     patch.position = Some(new_position);
+    // Reparent when a new parent is supplied (empty string detaches to root).
+    // `check::check_move_structure` rejects cycles before the write happens.
+    if let Some(p) = new_parent {
+        patch.attributes.insert("parent".into(), p);
+    }
     let op = build_op(
         &s.store,
         &doc_id,
@@ -508,7 +550,325 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
     ))
 }
 
+#[tauri::command]
+fn export_markdown(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let doc = crud::get_document(s.store.conn(), &doc_id)
+        .map_err(err)?
+        .ok_or_else(|| err("doc missing"))?;
+    let nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
+    Ok(aidoc::exporter::export_markdown(&doc, &nodes))
+}
+
+#[tauri::command]
+fn search_nodes(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<NodeDto>, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let nodes =
+        crud::search_nodes(s.store.conn(), &doc_id, &query, limit.unwrap_or(50)).map_err(err)?;
+    Ok(nodes.into_iter().map(node_to_dto).collect())
+}
+
+/// Snapshot-based A→B diff (mirrors the CLI `diff` command). Each revision
+/// stores a full node snapshot on apply, so we compare two of those rather
+/// than the live table.
+#[tauri::command]
+fn diff_revisions(
+    state: tauri::State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<DiffReportDto, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let from_nodes = crud::load_snapshot(s.store.conn(), &doc_id, &from)
+        .map_err(err)?
+        .unwrap_or_default();
+    let to_nodes = crud::load_snapshot(s.store.conn(), &doc_id, &to)
+        .map_err(err)?
+        .ok_or_else(|| err(format!("no snapshot for revision {to}")))?;
+
+    let from_map: HashMap<&str, &str> = from_nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.content.as_str()))
+        .collect();
+    let to_map: HashMap<&str, &str> = to_nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.content.as_str()))
+        .collect();
+
+    // BTreeSet de-dupes and orders the union of both node-id sets.
+    let ids: Vec<&str> = from_map
+        .keys()
+        .chain(to_map.keys())
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut entries = Vec::new();
+    let (mut added, mut removed, mut changed) = (0usize, 0usize, 0usize);
+    for id in ids {
+        match (from_map.get(id), to_map.get(id)) {
+            (None, Some(after)) => {
+                added += 1;
+                entries.push(DiffEntryDto {
+                    node: id.to_owned(),
+                    status: "added".into(),
+                    before: None,
+                    after: Some((*after).to_owned()),
+                });
+            }
+            (Some(before), None) => {
+                removed += 1;
+                entries.push(DiffEntryDto {
+                    node: id.to_owned(),
+                    status: "removed".into(),
+                    before: Some((*before).to_owned()),
+                    after: None,
+                });
+            }
+            (Some(before), Some(after)) if *before != *after => {
+                changed += 1;
+                entries.push(DiffEntryDto {
+                    node: id.to_owned(),
+                    status: "changed".into(),
+                    before: Some((*before).to_owned()),
+                    after: Some((*after).to_owned()),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(DiffReportDto {
+        from,
+        to,
+        added,
+        removed,
+        changed,
+        entries,
+    })
+}
+
+#[tauri::command]
+fn list_relations(state: tauri::State<'_, AppState>) -> Result<Vec<RelationDto>, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let rels = crud::list_relations(s.store.conn(), &doc_id).map_err(err)?;
+    Ok(rels
+        .into_iter()
+        .map(|r| RelationDto {
+            id: r.id,
+            source: r.source.as_str().to_owned(),
+            target: r.target.as_str().to_owned(),
+            kind: r.kind.as_str().to_owned(),
+        })
+        .collect())
+}
+
+/// Build a Link/Unlink op. `op.target` is the destination and `op.targets[0]`
+/// the source, matching `LinkHandler` / `UnlinkHandler`.
+fn relation_op(
+    store: &Store,
+    doc_id: &str,
+    op_type: OperationType,
+    source: &str,
+    target: &str,
+    reason: &str,
+) -> Result<Operation, String> {
+    let head = current_head(store, doc_id)?;
+    Ok(Operation {
+        id: OpId::new(format!("OP-{}", chrono::Utc::now().timestamp_millis())),
+        op_type,
+        target: Some(NodeId::from_validated(target)),
+        expected_revision: RevisionId::new(head),
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![NodeId::from_validated(source)],
+        actor: Provenance::human(Some("desktop".into())),
+        patch: None,
+        reason: Some(reason.into()),
+    })
+}
+
+#[tauri::command]
+fn create_link(
+    state: tauri::State<'_, AppState>,
+    source: String,
+    target: String,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let op = relation_op(&s.store, &doc_id, OperationType::Link, &source, &target, "UI link")?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
+#[tauri::command]
+fn delete_link(
+    state: tauri::State<'_, AppState>,
+    source: String,
+    target: String,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let op = relation_op(&s.store, &doc_id, OperationType::Unlink, &source, &target, "UI unlink")?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
+#[tauri::command]
+fn set_node_attributes(
+    state: tauri::State<'_, AppState>,
+    target: String,
+    attrs: HashMap<String, String>,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let target_id = NodeId::from_validated(&target);
+    let mut patch = Patch::default();
+    for (k, v) in attrs {
+        patch.attributes.insert(k, v);
+    }
+    let op = build_op(
+        &s.store,
+        &doc_id,
+        OperationType::Update,
+        Some(target_id),
+        Some(patch),
+        "UI edit attributes",
+    )?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
+#[tauri::command]
+fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, String> {
+    let g = state.inner.lock().unwrap();
+    let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let revs = crud::list_revisions(s.store.conn(), &doc_id).map_err(err)?;
+    let mut named: HashMap<String, (Option<String>, usize)> = HashMap::new();
+    let mut main_head: Option<String> = None;
+    let mut main_count = 0usize;
+    for r in &revs {
+        match &r.branch {
+            None => {
+                main_count += 1;
+                main_head = Some(r.id.as_str().to_owned());
+            }
+            Some(name) => {
+                let entry = named.entry(name.clone()).or_insert((None, 0));
+                entry.1 += 1;
+                entry.0 = Some(r.id.as_str().to_owned());
+            }
+        }
+    }
+    let mut out = vec![BranchDto {
+        name: "main".into(),
+        head: main_head,
+        revisions: main_count,
+    }];
+    let mut names: Vec<&String> = named.keys().collect();
+    names.sort_unstable();
+    for name in names {
+        let (head, count) = &named[name];
+        out.push(BranchDto {
+            name: name.clone(),
+            head: head.clone(),
+            revisions: *count,
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn create_branch(state: tauri::State<'_, AppState>, name: String) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let head = current_head(&s.store, &doc_id)?;
+    let mut patch = Patch::default();
+    patch.attributes.insert("branch".into(), name.clone());
+    let op = Operation {
+        id: OpId::new(format!("OP-branch-{}", chrono::Utc::now().timestamp_millis())),
+        op_type: OperationType::Branch,
+        target: None,
+        expected_revision: RevisionId::new(head),
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![],
+        actor: Provenance::human(Some("desktop".into())),
+        patch: Some(patch),
+        reason: Some(format!("branch {name}")),
+    };
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
+#[tauri::command]
+fn merge_branch(state: tauri::State<'_, AppState>, name: String) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let head = current_head(&s.store, &doc_id)?;
+    // v0.1 merge mirrors the CLI: a Branch op whose reason records the merge.
+    let op = Operation {
+        id: OpId::new(format!("OP-merge-{}", chrono::Utc::now().timestamp_millis())),
+        op_type: OperationType::Branch,
+        target: None,
+        expected_revision: RevisionId::new(head),
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![],
+        actor: Provenance::human(Some("desktop".into())),
+        patch: None,
+        reason: Some(format!("merge {name} into main")),
+    };
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
+}
+
 // ---------------- helpers ----------------
+
+fn node_to_dto(n: Node) -> NodeDto {
+    // Serialise the kind through serde so multi-word kinds stay kebab-case
+    // (`code-ref`, `list-item`) and match the frontend's Kind taxonomy.
+    let kind = serde_json::to_value(n.kind)
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_owned()))
+        .unwrap_or_else(|| format!("{:?}", n.kind).to_lowercase());
+    NodeDto {
+        id: n.id.as_str().to_owned(),
+        kind,
+        parent: n.parent.as_ref().map(|p| p.as_str().to_owned()),
+        position: n.position,
+        content: n.content,
+        attributes: n.attributes.into_iter().collect(),
+    }
+}
+
+fn current_head(store: &Store, doc_id: &str) -> Result<String, String> {
+    crud::head_revision(store.conn(), doc_id)
+        .map_err(err)?
+        .ok_or_else(|| err("no head revision"))
+}
 
 fn read_info(store: &Store, package: &aidoc::Package) -> InfoDto {
     let head = crud::head_revision(store.conn(), &package.manifest.document.id)
@@ -562,6 +922,7 @@ fn seed_initial_revision(store: &mut Store, doc_id: &str) -> Result<(), String> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             init_doc,
@@ -572,12 +933,22 @@ pub fn run() {
             update_node,
             revert,
             export_html,
+            export_markdown,
             validate_aidoc,
             create_node,
             delete_node,
             list_changes,
             set_node_kind,
+            set_node_attributes,
             move_node,
+            search_nodes,
+            diff_revisions,
+            list_relations,
+            create_link,
+            delete_link,
+            list_branches,
+            create_branch,
+            merge_branch,
             ai_chat,
         ])
         .run(tauri::generate_context!())
