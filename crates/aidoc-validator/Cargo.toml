@@ -9,3 +9,8 @@ license.workspace = true
 aidoc-model = { path = "../aidoc-model" }
 aidoc-storage = { path = "../aidoc-storage" }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }

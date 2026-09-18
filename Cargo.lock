@@ -184,6 +184,9 @@ version = "0.1.0"
 dependencies = [
  "aidoc-model",
  "aidoc-storage",
+ "anyhow",
+ "chrono",
+ "rusqlite",
  "thiserror 2.0.20",
 ]
 
