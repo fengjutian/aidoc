@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -30,6 +30,14 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -169,9 +177,9 @@ function RichEditor({ kind, content, onChange, onKindChange }: Props) {
       {editor && (
         <TooltipProvider delayDuration={250}>
           {onKindChange && (
-            <KindStrip kind={kind} onChange={onKindChange} />
+            <KindPicker kind={kind} onChange={onKindChange} />
           )}
-          {!isCode && <Toolbar editor={editor} />}
+          {!isCode && <FloatingToolbar editor={editor} />}
           <EditorContent editor={editor} />
         </TooltipProvider>
       )}
@@ -184,71 +192,109 @@ interface KindDef {
   label: string;
   Icon: LucideIcon;
   tone: string;
+  group: "Block" | "Lists" | "Tables" | "Media" | "Semantic";
 }
 
 const KINDS: KindDef[] = [
-  { id: "section",     label: "Section",     Icon: FileText,       tone: "" },
-  { id: "heading",     label: "Heading",     Icon: Heading2,       tone: "" },
-  { id: "paragraph",   label: "Paragraph",   Icon: AlignLeft,      tone: "" },
-  { id: "list",        label: "List",        Icon: List,           tone: "" },
-  { id: "list-item",   label: "List item",   Icon: ListOrdered,    tone: "" },
-  { id: "table",       label: "Table",       Icon: TableIcon,      tone: "" },
-  { id: "table-row",   label: "Table row",   Icon: TableIcon,      tone: "" },
-  { id: "table-cell",  label: "Table cell",  Icon: TableIcon,      tone: "" },
-  { id: "code",        label: "Code",        Icon: Code,           tone: "" },
-  { id: "blockquote",  label: "Quote",       Icon: Quote,          tone: "" },
-  { id: "link",        label: "Link",        Icon: Link2,          tone: "text-cyan-500" },
-  { id: "image",       label: "Image",       Icon: ImageIcon,      tone: "text-fuchsia-500" },
-  { id: "diagram",     label: "Diagram",     Icon: Workflow,       tone: "" },
-  { id: "code-ref",    label: "Code ref",    Icon: Code2,          tone: "text-indigo-500" },
-  { id: "requirement", label: "Requirement", Icon: BookmarkCheck,  tone: "text-blue-500" },
-  { id: "decision",    label: "Decision",    Icon: CheckCircle2,   tone: "text-emerald-500" },
-  { id: "problem",     label: "Problem",     Icon: AlertOctagon,   tone: "text-rose-500" },
-  { id: "solution",    label: "Solution",    Icon: Wrench,         tone: "text-amber-500" },
-  { id: "reference",   label: "Reference",   Icon: BookOpen,       tone: "" },
-  { id: "details",     label: "Details",     Icon: ChevronDown,    tone: "" },
-  { id: "summary",     label: "Summary",     Icon: ChevronRight,   tone: "" },
-  { id: "generic",     label: "Generic",     Icon: AlignLeft,      tone: "" },
+  { id: "section",     label: "Section",     Icon: FileText,       tone: "",              group: "Block" },
+  { id: "heading",     label: "Heading",     Icon: Heading2,       tone: "",              group: "Block" },
+  { id: "paragraph",   label: "Paragraph",   Icon: AlignLeft,      tone: "",              group: "Block" },
+  { id: "blockquote",  label: "Quote",       Icon: Quote,          tone: "",              group: "Block" },
+  { id: "code",        label: "Code",        Icon: Code,           tone: "",              group: "Block" },
+  { id: "list",        label: "List",        Icon: List,           tone: "",              group: "Lists" },
+  { id: "list-item",   label: "List item",   Icon: ListOrdered,    tone: "",              group: "Lists" },
+  { id: "table",       label: "Table",       Icon: TableIcon,      tone: "",              group: "Tables" },
+  { id: "table-row",   label: "Table row",   Icon: TableIcon,      tone: "",              group: "Tables" },
+  { id: "table-cell",  label: "Table cell",  Icon: TableIcon,      tone: "",              group: "Tables" },
+  { id: "link",        label: "Link",        Icon: Link2,          tone: "text-cyan-500",  group: "Media" },
+  { id: "image",       label: "Image",       Icon: ImageIcon,      tone: "text-fuchsia-500", group: "Media" },
+  { id: "diagram",     label: "Diagram",     Icon: Workflow,       tone: "",              group: "Media" },
+  { id: "code-ref",    label: "Code ref",    Icon: Code2,          tone: "text-indigo-500", group: "Media" },
+  { id: "requirement", label: "Requirement", Icon: BookmarkCheck,  tone: "text-blue-500",  group: "Semantic" },
+  { id: "decision",    label: "Decision",    Icon: CheckCircle2,   tone: "text-emerald-500", group: "Semantic" },
+  { id: "problem",     label: "Problem",     Icon: AlertOctagon,   tone: "text-rose-500",  group: "Semantic" },
+  { id: "solution",    label: "Solution",    Icon: Wrench,         tone: "text-amber-500", group: "Semantic" },
+  { id: "reference",   label: "Reference",   Icon: BookOpen,       tone: "",              group: "Semantic" },
+  { id: "details",     label: "Details",     Icon: ChevronDown,    tone: "",              group: "Semantic" },
+  { id: "summary",     label: "Summary",     Icon: ChevronRight,   tone: "",              group: "Semantic" },
+  { id: "generic",     label: "Generic",     Icon: AlignLeft,      tone: "",              group: "Semantic" },
 ];
 
-function KindStrip({
+const KIND_GROUPS: KindDef["group"][] = ["Block", "Lists", "Tables", "Media", "Semantic"];
+
+/**
+ * Compact kind picker: shows the current kind in a single button and opens a
+ * grouped dropdown. Replaces the previous 22-button horizontal strip.
+ */
+function KindPicker({
   kind,
   onChange,
 }: {
   kind: Kind;
   onChange: (k: Kind) => void;
 }) {
+  const current = KINDS.find((k) => k.id === kind) ?? KINDS[KINDS.length - 1];
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
-      <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         Kind
       </span>
-      {KINDS.map((k) => {
-        const active = k.id === kind;
-        return (
-          <Tooltip key={k.id}>
-            <TooltipTrigger asChild>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
               <Button
                 type="button"
-                variant={active ? "secondary" : "ghost"}
+                variant="secondary"
                 size="sm"
-                className={cn("h-7 px-2 text-xs", active && "font-semibold")}
-                onClick={() => onChange(k.id)}
-                aria-pressed={active}
+                className="h-7 gap-1.5 px-2 text-xs font-semibold"
+                aria-label={`Node kind: ${current.label}`}
               >
-                <k.Icon className={cn("mr-1 h-3.5 w-3.5", k.tone)} />
-                {k.label}
+                <current.Icon className={cn("h-3.5 w-3.5", current.tone)} />
+                {current.label}
+                <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>Switch to {k.label}</TooltipContent>
-          </Tooltip>
-        );
-      })}
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Switch node kind</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="start" className="w-52">
+          {KIND_GROUPS.map((group, gi) => (
+            <div key={group}>
+              {gi > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {group}
+              </DropdownMenuLabel>
+              {KINDS.filter((k) => k.group === group).map((k) => (
+                <DropdownMenuItem
+                  key={k.id}
+                  onSelect={() => onChange(k.id)}
+                  className={cn(k.id === kind && "font-semibold text-primary")}
+                >
+                  <k.Icon className={cn("h-4 w-4", k.tone || "text-muted-foreground")} />
+                  <span className="flex-1">{k.label}</span>
+                  {k.id === kind && (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
 
-function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>> }) {
+/**
+ * Floating inline toolbar — appears above the current text selection instead
+ * of pinning itself above the editor like the previous static toolbar.
+ */
+function FloatingToolbar({
+  editor,
+}: {
+  editor: NonNullable<ReturnType<typeof useEditor>>;
+}) {
   const Tip = ({
     onClick,
     active,
@@ -268,20 +314,24 @@ function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>>
           size="icon"
           onClick={onClick}
           className={cn(
-            "h-8 w-8",
+            "h-7 w-7",
             active && "bg-accent text-accent-foreground",
           )}
           aria-label={label}
           aria-pressed={active}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="h-3.5 w-3.5" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-muted/40 px-2 py-1">
+    <BubbleMenu
+      editor={editor}
+      tippyOptions={{ duration: 120, placement: "top" }}
+      className="flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-md"
+    >
       <Tip
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
@@ -300,7 +350,7 @@ function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>>
         label="Inline code"
         Icon={Code}
       />
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
       <Tip
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         active={editor.isActive("heading", { level: 2 })}
@@ -313,7 +363,7 @@ function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>>
         label="Heading 3"
         Icon={Heading3}
       />
-      <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+      <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
       <Tip
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         active={editor.isActive("bulletList")}
@@ -338,7 +388,7 @@ function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>>
         label="Code block"
         Icon={Code2}
       />
-    </div>
+    </BubbleMenu>
   );
 }
 

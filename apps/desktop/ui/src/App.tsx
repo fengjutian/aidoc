@@ -6,6 +6,7 @@ import {
   Clock,
   Download,
   Eye,
+  FileCode,
   FilePlus,
   FileText,
   FolderOpen,
@@ -829,25 +830,32 @@ export default function App() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="outline" onClick={onExportHtml}>
-              <Download className="mr-1.5 h-3.5 w-3.5" />
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {t("header.export")}
+                  <span className="ml-1 text-xs text-muted-foreground">▾</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Export document (HTML ⌘E / Markdown ⇧⌘E)</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => void onExportHtml()}>
+              <FileCode className="text-muted-foreground" />
               {t("header.exportHtml")}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Render document to HTML and open in browser</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="outline" onClick={onExportMarkdown}>
-              <Download className="mr-1.5 h-3.5 w-3.5" />
+              <span className="ml-auto text-xs text-muted-foreground">⌘ E</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onExportMarkdown()}>
+              <FileText className="text-muted-foreground" />
               {t("header.exportMd")}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Render document as Markdown and save as .md</TooltipContent>
-        </Tooltip>
+              <span className="ml-auto text-xs text-muted-foreground">⇧ ⌘ E</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       {error && (
