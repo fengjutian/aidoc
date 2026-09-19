@@ -98,9 +98,57 @@ export default function App() {
   const [diffRev, setDiffRev] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiHistory, setAiHistory] = useState<
+    { role: "user" | "assistant" | "error"; content: string }[]
+  >([]);
   const [branchOpen, setBranchOpen] = useState(false);
   const [linkSource, setLinkSource] = useState<string | null>(null);
   const [attrsNodeId, setAttrsNodeId] = useState<string | null>(null);
+
+  // Debounced AI-history persistence. Whenever `aiHistory` changes, schedule
+  // a write to the `__ai_history__` metadata node — coalesced so a fast back-
+  // and-forth conversation only produces one revision.
+  const aiHistoryTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!info) return;
+    if (aiHistoryTimer.current !== null) {
+      window.clearTimeout(aiHistoryTimer.current);
+    }
+    aiHistoryTimer.current = window.setTimeout(async () => {
+      try {
+        const json = JSON.stringify(aiHistory);
+        // Always create-or-update via attributes so we don't fight the nodes
+        // list ordering. set_node_attributes accepts both an existing target
+        // and will create-then-update on the first run via create_node.
+        const exists = nodes.some((n) => n.id === "__ai_history__");
+        if (exists) {
+          await invoke<string>("set_node_attributes", {
+            target: "__ai_history__",
+            attrs: { history: json },
+          });
+        } else {
+          await invoke<string>("create_node", {
+            id: "__ai_history__",
+            kind: "generic",
+            content: "",
+          });
+          await invoke<string>("set_node_attributes", {
+            target: "__ai_history__",
+            attrs: { history: json },
+          });
+        }
+      } catch {
+        // Silently swallow — the user will notice their next send fails
+        // if the underlying issue is structural, and persistence is best-
+        // effort.
+      }
+    }, 400);
+    return () => {
+      if (aiHistoryTimer.current !== null) {
+        window.clearTimeout(aiHistoryTimer.current);
+      }
+    };
+  }, [aiHistory, info, nodes]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [docPath, setDocPath] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
@@ -120,6 +168,33 @@ export default function App() {
       setNodes(n);
       setRevs(r);
       setRelations(rel);
+      // Load AI chat history from a dedicated metadata node.
+      const histNode = n.find((x) => x.id === "__ai_history__");
+      if (histNode?.attributes?.history) {
+        try {
+          const parsed = JSON.parse(histNode.attributes.history);
+          if (Array.isArray(parsed)) {
+            setAiHistory(
+              parsed.filter(
+                (t: unknown): t is { role: "user" | "assistant" | "error"; content: string } =>
+                  typeof t === "object" &&
+                  t !== null &&
+                  typeof (t as { role?: unknown }).role === "string" &&
+                  ["user", "assistant", "error"].includes(
+                    (t as { role: string }).role,
+                  ) &&
+                  typeof (t as { content?: unknown }).content === "string",
+              ),
+            );
+          } else {
+            setAiHistory([]);
+          }
+        } catch {
+          setAiHistory([]);
+        }
+      } else {
+        setAiHistory([]);
+      }
       setInfo((prev) =>
         prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev,
       );
@@ -944,6 +1019,8 @@ export default function App() {
           setActiveId(id);
           setAiOpen(false);
         }}
+        initialHistory={aiHistory}
+        onHistoryChange={setAiHistory}
       />
 
       <BranchDialog

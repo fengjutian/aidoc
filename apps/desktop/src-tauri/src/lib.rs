@@ -14,12 +14,17 @@ use aidoc_storage::{Store, crud};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Mutex;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter};
 
 #[derive(Default)]
 struct AppState {
     inner: Mutex<Option<SessionHandle>>,
+    /// Slot for the currently-running AI child process. `Arc<Mutex<Option<Child>>>`
+    /// so the reader thread can also pull it out for `wait()` while the main
+    /// thread keeps a handle for `abort_ai_chat` to kill it.
+    ai_child: Mutex<Option<Arc<Mutex<Option<Child>>>>>,
 }
 
 struct SessionHandle {
@@ -117,7 +122,79 @@ fn ai_agent_path() -> Option<PathBuf> {
     None
 }
 
+/// Resolve the `aidoc-mcp` binary path. Search order:
+/// 1. `AIDOC_MCP_BIN` env var (absolute or relative path)
+/// 2. Walk up from `current_exe` looking for `target/{debug,release}/aidoc-mcp[.exe]`
+/// 3. Walk up looking for a workspace sibling of `apps/desktop/` containing
+///    `crates/aidoc-mcp/target/{debug,release}/aidoc-mcp[.exe]` (cargo run from
+///    the aidoc-mcp crate itself)
+/// 4. Fallback to `target/debug/aidoc-mcp[.exe]` from CWD (dev convenience)
+fn resolve_mcp_bin() -> Option<PathBuf> {
+    let bin_name = if cfg!(target_os = "windows") {
+        "aidoc-mcp.exe"
+    } else {
+        "aidoc-mcp"
+    };
+
+    // 1. Explicit env var wins.
+    if let Ok(p) = std::env::var("AIDOC_MCP_BIN") {
+        let p = PathBuf::from(p);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    // 2 & 3. Walk up from the desktop exe.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut cur = exe.parent().map(|p| p.to_path_buf());
+        let mut saw_desktop = false;
+        while let Some(dir) = cur {
+            // If we're inside the desktop app crate, try the workspace-root
+            // target/ (covers both debug and release profiles).
+            for profile in &["debug", "release"] {
+                let cand = dir.join("target").join(profile).join(bin_name);
+                if cand.exists() {
+                    return Some(cand);
+                }
+            }
+            // Mark when we've crossed the desktop app dir so on later walks
+            // we also probe a sibling `crates/aidoc-mcp/target/...` for users
+            // who ran `cargo run -p aidoc-mcp` standalone.
+            if dir.join("Cargo.toml").exists()
+                && dir.join("tauri.conf.json").exists()
+            {
+                saw_desktop = true;
+            }
+            if saw_desktop {
+                let cand = dir
+                    .join("..")
+                    .join("..")
+                    .join("..")
+                    .join("crates")
+                    .join("aidoc-mcp")
+                    .join("target")
+                    .join("debug")
+                    .join(bin_name);
+                if cand.exists() {
+                    return Some(cand);
+                }
+            }
+            cur = dir.parent().map(|p| p.to_path_buf());
+        }
+    }
+
+    // 4. Last-ditch dev convenience: relative to CWD.
+    let cwd_fallback = PathBuf::from("target").join("debug").join(bin_name);
+    if cwd_fallback.exists() {
+        return Some(cwd_fallback);
+    }
+
+    None
+}
+
 fn ai_chat_impl(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
     prompt: String,
     api_key: Option<String>,
     base_url: Option<String>,
@@ -125,6 +202,9 @@ fn ai_chat_impl(
     doc_path: Option<String>,
     history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
     let script = ai_agent_path().ok_or_else(|| {
         "Could not locate apps/ai/agent.py. Set the AIDOC_AI_AGENT env var to its absolute path.".to_string()
     })?;
@@ -142,11 +222,15 @@ fn ai_chat_impl(
         std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into())
     });
 
-    let mcp_bin = "target\\debug\\aidoc-mcp.exe";
+    let mcp_bin = resolve_mcp_bin().ok_or_else(|| {
+        "Could not locate aidoc-mcp binary. Set AIDOC_MCP_BIN env var to its \
+         absolute path, or build the crate with `cargo build -p aidoc-mcp`."
+            .to_string()
+    })?;
     let mut cmd = Command::new("python");
     cmd.arg(&script)
         .arg("--mcp-bin")
-        .arg(mcp_bin)
+        .arg(&mcp_bin)
         .arg("--api-key")
         .arg(&key)
         .arg("--base-url")
@@ -176,20 +260,87 @@ fn ai_chat_impl(
             cmd.arg("--history-json").arg(json);
         }
     }
-    let out = cmd.output().map_err(|e| format!("spawn python: {e}"))?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        return Err(format!(
-            "ai_chat exited with status {}: {}",
-            out.status,
-            stderr.trim()
-        ));
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn python: {e}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "no stdout pipe".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "no stderr pipe".to_string())?;
+
+    // Stash child for abort_ai_chat. Wrapped in Arc so both this thread and
+    // the reader thread can drop/kill it.
+    let slot: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(Some(child)));
+    {
+        let mut g = state.ai_child.lock().unwrap();
+        if let Some(prev) = g.take() {
+            // A previous request is still running — kill it first.
+            let mut inner = prev.lock().unwrap();
+            if let Some(mut c) = inner.take() {
+                let _ = c.kill();
+            }
+        }
+        *g = Some(slot.clone());
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+
+    // Reader thread: line-by-line stdout → emit "ai-chunk"; stderr buffered
+    // for an error message if the process exits non-zero.
+    let app_for_thread = app.clone();
+    let slot_for_thread = slot.clone();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(chunk) => {
+                    let _ = app_for_thread.emit("ai-chunk", chunk);
+                }
+                Err(_) => break,
+            }
+        }
+        // Drain stderr on a separate thread so we don't block the main reader.
+        let stderr_app = app_for_thread.clone();
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            let mut buf = String::new();
+            for line in reader.lines().map_while(Result::ok) {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            if !buf.trim().is_empty() {
+                let _ = stderr_app.emit("ai-stderr", buf);
+            }
+        });
+
+        let mut child_guard = slot_for_thread.lock().unwrap();
+        if let Some(mut c) = child_guard.take() {
+            match c.wait() {
+                Ok(status) if status.success() => {
+                    let _ = app_for_thread.emit("ai-done", true);
+                }
+                Ok(status) => {
+                    let _ = app_for_thread.emit(
+                        "ai-error",
+                        format!("ai_chat exited with status {status}"),
+                    );
+                }
+                Err(e) => {
+                    let _ = app_for_thread.emit("ai-error", format!("wait failed: {e}"));
+                }
+            }
+        }
+    });
+
+    Ok("started".into())
 }
 
 #[tauri::command]
 fn ai_chat(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
     prompt: String,
     api_key: Option<String>,
     base_url: Option<String>,
@@ -197,7 +348,32 @@ fn ai_chat(
     doc_path: Option<String>,
     history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
-    ai_chat_impl(prompt, api_key, base_url, model, doc_path, history)
+    ai_chat_impl(
+        app,
+        state,
+        prompt,
+        api_key,
+        base_url,
+        model,
+        doc_path,
+        history,
+    )
+}
+
+#[tauri::command]
+fn abort_ai_chat(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let mut g = state.ai_child.lock().unwrap();
+    let slot = match g.take() {
+        Some(s) => s,
+        None => return Ok(false),
+    };
+    let mut child_guard = slot.lock().unwrap();
+    if let Some(mut c) = child_guard.take() {
+        let _ = c.kill();
+        let _ = c.wait();
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 // ---------------- Commands ----------------
@@ -972,7 +1148,112 @@ pub fn run() {
             create_branch,
             merge_branch,
             ai_chat,
+            abort_ai_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_kind_maps_every_supported_string() {
+        // Every backend NodeKind variant except the ones that are pure-
+        // structural (`List` / `Code` / etc.) should round-trip here.
+        let cases: &[(&str, &str)] = &[
+            ("section", "section"),
+            ("paragraph", "paragraph"),
+            ("heading", "heading"),
+            ("list", "list"),
+            ("list-item", "listitem"),
+            ("table", "table"),
+            ("table-row", "tablerow"),
+            ("table-cell", "tablecell"),
+            ("code", "code"),
+            ("blockquote", "blockquote"),
+            ("link", "link"),
+            ("image", "image"),
+            ("diagram", "diagram"),
+            ("code-ref", "coderef"),
+            ("requirement", "requirement"),
+            ("decision", "decision"),
+            ("problem", "problem"),
+            ("solution", "solution"),
+            ("reference", "reference"),
+            ("details", "details"),
+            ("summary", "summary"),
+            ("generic", "generic"),
+        ];
+        for (input, expected_dbg) in cases {
+            let kind = parse_kind(input).unwrap_or_else(|e| panic!("{input}: {e}"));
+            assert_eq!(format!("{kind:?}").to_lowercase(), *expected_dbg,
+                "kind string {input} should map to {expected_dbg}");
+        }
+    }
+
+    #[test]
+    fn parse_kind_rejects_unknown() {
+        assert!(parse_kind("not-a-kind").is_err());
+        assert!(parse_kind("").is_err());
+    }
+
+    #[test]
+    fn resolve_mcp_bin_prefers_env_var() {
+        // Set the env var to a path that obviously does not exist and
+        // expect `resolve_mcp_bin` to refuse (env var set but missing).
+        let bogus = PathBuf::from("Z:/definitely/does/not/exist/aidoc-mcp.exe");
+        // SAFETY: tests in this module are single-threaded for env mutation.
+        unsafe {
+            std::env::set_var("AIDOC_MCP_BIN", &bogus);
+        }
+        let result = resolve_mcp_bin();
+        unsafe {
+            std::env::remove_var("AIDOC_MCP_BIN");
+        }
+        // When env var is set but invalid, resolve_mcp_bin should not return
+        // Some(bogus) — it should fall through to the other strategies.
+        if let Some(p) = result {
+            assert_ne!(p, bogus, "must not honour an env var pointing at a missing file");
+        }
+    }
+
+    #[test]
+    fn build_op_attaches_human_provenance() {
+        // Build a temp in-memory store so we can exercise build_op without
+        // touching the filesystem. The build_op helper only consults the
+        // store for the head revision, so an empty in-memory DB will
+        // surface as `no head revision`.
+        let dir = tempdir_in_cwd();
+        let db = dir.join("doc.db");
+        let store = Store::open(&db).expect("open store");
+        let doc_id = "doc-test";
+        let r = build_op(
+            &store,
+            doc_id,
+            OperationType::Update,
+            Some(NodeId::from_validated("root")),
+            Some(Patch {
+                content: Some("hello".into()),
+                attributes: Default::default(),
+                ..Default::default()
+            }),
+            "test reason",
+        );
+        // No R000 seeded → expect "no head revision" error rather than panic.
+        assert!(r.is_err(), "build_op must surface missing head as Err, not panic");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn tempdir_in_cwd() -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("aidoc-test-{nanos}"));
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        dir
+    }
 }

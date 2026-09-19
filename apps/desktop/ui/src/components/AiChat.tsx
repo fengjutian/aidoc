@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Download, Eraser, Loader2, Send, Sparkles } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { Download, Eraser, Loader2, Send, Sparkles, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,14 +22,17 @@ interface AiChatProps {
   docPath: string | null;
   nodeIds: string[];
   onJumpToNode: (id: string) => void;
+  /** Conversation turns loaded from the .aidoc package on open. */
+  initialHistory: ChatTurn[];
+  /** Called whenever the conversation turns change. Parent should persist
+   *  these into the document via `set_node_attributes(target, { history })`. */
+  onHistoryChange?: (turns: ChatTurn[]) => void;
 }
 
 interface ChatTurn {
   role: "user" | "assistant" | "error";
   content: string;
 }
-
-const STORAGE_KEY = "aidoc-ai-chat";
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -64,17 +68,6 @@ function renderWithLinks(
   return parts;
 }
 
-function loadHistory(): ChatTurn[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ChatTurn[]) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function AiChat({
   open,
   onOpenChange,
@@ -82,11 +75,28 @@ export function AiChat({
   docPath,
   nodeIds,
   onJumpToNode,
+  initialHistory,
+  onHistoryChange,
 }: AiChatProps) {
   const [prompt, setPrompt] = useState("");
-  const [history, setHistory] = useState<ChatTurn[]>(loadHistory);
+  const [history, setHistory] = useState<ChatTurn[]>(initialHistory);
   const [pending, setPending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Re-seed history when the document changes (initialHistory is a fresh prop).
+  useEffect(() => {
+    setHistory(initialHistory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docPath]);
+
+  // Bubble changes back to the parent for persistence into the .aidoc package.
+  // Errors aren't worth persisting — strip them before saving.
+  useEffect(() => {
+    if (!onHistoryChange) return;
+    const cleanable = history.filter((t) => t.role !== "error");
+    onHistoryChange(cleanable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
   const [suggestion, setSuggestion] = useState<{
     start: number;
     end: number;
@@ -99,22 +109,6 @@ export function AiChat({
     () => [...nodeIds].sort((a, b) => a.localeCompare(b)),
     [nodeIds],
   );
-
-  useEffect(() => {
-    if (history.length === 0) {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // ignore
-      }
-    } else {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-      } catch {
-        // ignore quota / privacy errors
-      }
-    }
-  }, [history]);
 
   useEffect(() => {
     if (!open) return;
@@ -222,6 +216,22 @@ export function AiChat({
     URL.revokeObjectURL(url);
   };
 
+  const unlistenersRef = useRef<UnlistenFn[]>([]);
+
+  const cleanupListeners = () => {
+    for (const u of unlistenersRef.current) u();
+    unlistenersRef.current = [];
+  };
+
+  const abort = async () => {
+    cleanupListeners();
+    try {
+      await invoke<boolean>("abort_ai_chat");
+    } catch {
+      /* ignore */
+    }
+  };
+
   const send = async () => {
     const text = prompt.trim();
     if (!text || pending) return;
@@ -230,8 +240,49 @@ export function AiChat({
     setHistory(next);
     setPrompt("");
     setPending(true);
+
+    // Reserve a slot for the assistant turn; we'll mutate it as chunks arrive.
+    const assistantIdx = next.length;
+    setHistory((h) => [...h, { role: "assistant", content: "" }]);
+    let acc = "";
+
     try {
-      const out = await invoke<string>("ai_chat", {
+      const chunkUn = await listen<string>("ai-chunk", (e) => {
+        acc += e.payload;
+        setHistory((h) => {
+          if (assistantIdx >= h.length) return h;
+          const copy = h.slice();
+          copy[assistantIdx] = { role: "assistant", content: acc };
+          return copy;
+        });
+      });
+      const stderrUn = await listen<string>("ai-stderr", (e) => {
+        // Stderr is surfaced as an error turn so users see what went wrong.
+        cleanupListeners();
+        setHistory((h) => [...h, { role: "error", content: e.payload }]);
+        setPending(false);
+      });
+      const doneUn = await listen<boolean>("ai-done", () => {
+        cleanupListeners();
+        setHistory((h) => {
+          if (assistantIdx >= h.length) return h;
+          if (!acc) {
+            const copy = h.slice();
+            copy[assistantIdx] = { role: "assistant", content: "(empty response)" };
+            return copy;
+          }
+          return h;
+        });
+        setPending(false);
+      });
+      const errorUn = await listen<string>("ai-error", (e) => {
+        cleanupListeners();
+        setHistory((h) => [...h, { role: "error", content: e.payload }]);
+        setPending(false);
+      });
+      unlistenersRef.current = [chunkUn, stderrUn, doneUn, errorUn];
+
+      await invoke("ai_chat", {
         prompt: text,
         apiKey: settings.openaiApiKey,
         baseUrl: settings.openaiBaseUrl,
@@ -239,19 +290,22 @@ export function AiChat({
         docPath,
         history: prior,
       });
-      setHistory((h) => [
-        ...h,
-        { role: "assistant", content: out || "(empty response)" },
-      ]);
+      // Command returns "started" immediately; ai-done/ai-error cleanup
+      // listeners above flip `pending` to false.
     } catch (e) {
-      setHistory((h) => [
-        ...h,
-        { role: "error", content: String(e) },
-      ]);
-    } finally {
-      setPending(false);
+      cleanupListeners();
+      setHistory((h) => [...h, { role: "error", content: String(e) }]);
     }
   };
+
+  // Drop listeners when the dialog closes so we don't leak handlers.
+  useEffect(() => {
+    if (!open) {
+      cleanupListeners();
+      setPending(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -433,14 +487,17 @@ export function AiChat({
               </div>
             </div>
           )}
-          <Button type="submit" disabled={pending || !prompt.trim()}>
-            {pending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+          {pending ? (
+            <Button type="button" variant="destructive" onClick={() => void abort()}>
+              <Square className="h-3.5 w-3.5 fill-current" />
+              <span className="ml-1.5">Stop</span>
+            </Button>
+          ) : (
+            <Button type="submit" disabled={!prompt.trim()}>
               <Send className="h-4 w-4" />
-            )}
-            <span className="ml-1.5">Send</span>
-          </Button>
+              <span className="ml-1.5">Send</span>
+            </Button>
+          )}
         </form>
       </DialogContent>
     </Dialog>
