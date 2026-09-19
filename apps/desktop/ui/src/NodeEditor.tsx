@@ -36,6 +36,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -223,8 +226,23 @@ const KINDS: KindDef[] = [
 const KIND_GROUPS: KindDef["group"][] = ["Block", "Lists", "Tables", "Media", "Semantic"];
 
 /**
- * Compact kind picker: shows the current kind in a single button and opens a
- * grouped dropdown. Replaces the previous 22-button horizontal strip.
+ * Common kinds shown as one-click chips in the picker — covers ~90% of edits.
+ * Everything else is one submenu away.
+ */
+const FAVORITE_KINDS: Kind[] = [
+  "section",
+  "heading",
+  "paragraph",
+  "blockquote",
+  "code",
+  "list",
+  "image",
+  "diagram",
+];
+
+/**
+ * Compact kind picker. Common picks are one click; the rest are grouped into
+ * hover-to-open submenus so the main menu never gets longer than ~6 rows.
  */
 function KindPicker({
   kind,
@@ -258,28 +276,65 @@ function KindPicker({
           </TooltipTrigger>
           <TooltipContent>Switch node kind</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" className="w-52">
-          {KIND_GROUPS.map((group, gi) => (
-            <div key={group}>
-              {gi > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {group}
-              </DropdownMenuLabel>
-              {KINDS.filter((k) => k.group === group).map((k) => (
-                <DropdownMenuItem
-                  key={k.id}
-                  onSelect={() => onChange(k.id)}
-                  className={cn(k.id === kind && "font-semibold text-primary")}
-                >
-                  <k.Icon className={cn("h-4 w-4", k.tone || "text-muted-foreground")} />
-                  <span className="flex-1">{k.label}</span>
-                  {k.id === kind && (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </div>
-          ))}
+        <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Quick
+          </DropdownMenuLabel>
+          {FAVORITE_KINDS.map((id) => {
+            const k = KINDS.find((x) => x.id === id)!;
+            return (
+              <DropdownMenuItem
+                key={k.id}
+                onSelect={() => onChange(k.id)}
+                className={cn(k.id === kind && "font-semibold text-primary")}
+              >
+                <k.Icon className={cn("h-4 w-4", k.tone || "text-muted-foreground")} />
+                <span className="flex-1">{k.label}</span>
+                {k.id === kind && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
+          <DropdownMenuSeparator />
+          {KIND_GROUPS.map((group) => {
+            const items = KINDS.filter((k) => k.group === group && !FAVORITE_KINDS.includes(k.id));
+            if (items.length === 0) return null;
+            return (
+              <DropdownMenuSub key={group}>
+                <DropdownMenuSubTrigger>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {items.length}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent sideOffset={4} className="w-44">
+                  {items.map((k) => (
+                    <DropdownMenuItem
+                      key={k.id}
+                      onSelect={() => onChange(k.id)}
+                      className={cn(
+                        k.id === kind && "font-semibold text-primary",
+                      )}
+                    >
+                      <k.Icon
+                        className={cn(
+                          "h-4 w-4",
+                          k.tone || "text-muted-foreground",
+                        )}
+                      />
+                      <span className="flex-1">{k.label}</span>
+                      {k.id === kind && (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
