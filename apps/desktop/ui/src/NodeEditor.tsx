@@ -38,6 +38,9 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DiagramView } from "./DiagramView";
+import { ImageEditor } from "./ImageEditor";
+import { CodeRefEditor } from "./CodeRefEditor";
+import { wrapForKind, unwrapForKind } from "./editorSerialize";
 
 type Kind =
   | "section"
@@ -66,6 +69,7 @@ type Kind =
 interface Props {
   kind: Kind;
   content: string;
+  attributes?: Record<string, string>;
   onChange: (html: string) => void;
   onKindChange?: (kind: Kind) => void;
 }
@@ -75,9 +79,24 @@ interface Props {
  * Tiptap rich-text editor. Output is plain HTML, which the AIDoc Operation
  * pipeline persists as `Patch.content`.
  */
-export function NodeEditor({ kind, content, onChange, onKindChange }: Props) {
+export function NodeEditor({ kind, content, onChange, onKindChange, attributes }: Props) {
   if (kind === "diagram") {
     return <DiagramView source={content} onChange={onChange} editable />;
+  }
+  if (kind === "image") {
+    return <ImageEditor content={content} onChange={onChange} />;
+  }
+  if (kind === "code-ref") {
+    return (
+      <CodeRefEditor
+        content={content}
+        attributes={attributes ?? {}}
+        onChange={onChange}
+        onAttributesChange={() => {
+          // Surface through the global "Edit attributes" dialog; no-op here.
+        }}
+      />
+    );
   }
 
   return (
@@ -323,107 +342,8 @@ function Toolbar({ editor }: { editor: NonNullable<ReturnType<typeof useEditor>>
   );
 }
 
-/** Convert a plain-text AIDoc payload to Tiptap-friendly HTML. */
-function wrapForKind(kind: Kind, content: string): string {
-  if (!content) return "<p></p>";
-  if (content.trim().startsWith("<")) return content;
-  switch (kind) {
-    case "code":
-      return `<pre><code>${escapeHtml(content)}</code></pre>`;
-    case "blockquote":
-    case "requirement":
-    case "decision":
-    case "problem":
-    case "solution":
-      return `<blockquote><p>${escapeHtml(content)}</p></blockquote>`;
-    case "code-ref":
-      return `<p><strong>code-ref</strong> — ${escapeHtml(content)}</p>`;
-    case "heading":
-      return `<h2>${escapeHtml(content)}</h2>`;
-    case "list-item":
-      return `<ul><li>${escapeHtml(content)}</li></ul>`;
-    case "table":
-      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
-    case "table-row":
-      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
-    case "table-cell":
-      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
-    case "link":
-      // content is the URL; the label becomes the URL itself.
-      return `<p><a href="${escapeHtml(content)}">${escapeHtml(content)}</a></p>`;
-    case "image":
-      // content is the image URL; renders as <img> in HTML export.
-      return `<p><img src="${escapeHtml(content)}" alt="image"/></p>`;
-    case "details":
-      return `<details><summary>Details</summary><p>${escapeHtml(content)}</p></details>`;
-    case "summary":
-      return `<summary>${escapeHtml(content)}</summary>`;
-    case "generic":
-    case "paragraph":
-    case "section":
-    case "reference":
-    case "list":
-    default:
-      // Paragraph / generic: each newline becomes a new <p>.
-      return content
-        .split(/\n+/)
-        .map((l) => `<p>${escapeHtml(l)}</p>`)
-        .join("");
-  }
-}
 
-function unwrapForKind(kind: Kind, html: string): string {
-  switch (kind) {
-    case "code":
-      return stripTags(html, "pre,code");
-    case "blockquote":
-    case "requirement":
-    case "decision":
-    case "problem":
-    case "solution":
-      return stripTags(html, "blockquote,p");
-    case "code-ref":
-    case "heading":
-      return stripTags(html, "h2,p,h3,h4,strong");
-    case "link":
-    case "image": {
-      // Pull the URL back out of href / src.
-      const m = html.match(/(?:href|src)="([^"]+)"/);
-      return m ? m[1] : stripTags(html, "p,a,img");
-    }
-    case "list-item":
-      return stripTags(html, "ul,li");
-    case "table":
-    case "table-row":
-    case "table-cell":
-      return stripTags(html, "table,tbody,tr,td");
-    case "details":
-      return stripTags(html, "details,summary,p");
-    case "summary":
-      return stripTags(html, "summary");
-    default:
-      return stripTags(html, "p");
-  }
-}
-
-function stripTags(html: string, _selectors: string): string {
-  // Cheap strip: remove any matching wrapper + inner tags, keep text.
-  // Good enough for round-tripping the simple kinds we ship.
-  const out = html
-    .replace(/<br\s*\/?>/g, "\n")
-    .replace(/<\/?(?:p|h[1-6]|li|ul|ol|blockquote|pre|code|strong|em|span)[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
-  return out;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+// wrapForKind / unwrapForKind live in ./editorSerialize (JSX-free) so
+// they can be unit-tested with node --test without dragging React / Tiptap
+// into the test runner. Re-exported here so existing imports keep working.
+export { wrapForKind, unwrapForKind } from "./editorSerialize";

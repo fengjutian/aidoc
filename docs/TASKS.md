@@ -2,7 +2,42 @@
 
 > 维护约定：每完成一项，把 checkbox 勾上 + 在 commit 行里写一截 commit hash 锚定。下一项接手时从这里读起。
 
-最后更新：**2026-09-19**（阶段 1+2+3 全部完成；前端 vitest 留待 npmmirror 恢复后补）
+最后更新：**2026-09-19**（阶段 1+2+3+4 全部完成；14/14 ✓）
+
+## 累计完成（14 项）
+
+### 阶段 1 — 后端已有、前端未接（4/4 ✓）
+1. Branch / Merge UI（`BranchDialog.tsx`）
+2. Relations UI（`LinkDialog.tsx`）
+3. Revision diff A→B（`RevisionDiff.tsx` 重写）
+4. `set_node_attributes`（`AttributesDialog.tsx`）
+
+### 阶段 2 — UX 改进（4/4 ✓）
+5. Recent files + auto-restore（`useRecentFiles.ts`）
+6. Save As（后端 `save_doc_as` + Header DropdownMenu）
+7. 嵌套 / 树形视图（`NodeTree.tsx`）
+8. 补齐缺的 kind（22 种，后端 parse_kind 全配齐）
+
+### 阶段 3 — 生产质量（5/5 ✓）
+9. AI agent 路径修复（`resolve_mcp_bin`，跨平台）
+10. AI streaming（spawn + reader thread + events + Abort）
+11. AI history 持久化（attributes.history）
+12. Tests（cargo 10/10 + node 31/31，vitest 被 npm 镜像阻断改用 `node --test`）
+13. CSP 收紧（`script-src` 去 `unsafe-inline`）
+
+### 阶段 4 — 长期 + 小坑（5/5 ✓ + 4/4 ✓）
+14. 多文档 Tabs（Header 标签 + close_doc command）
+15. macOS/Linux 兼容（bundle.icon 多尺寸 PNG + Linux/macOS config）
+16. Code-ref 跳转（`CodeRefEditor.tsx` source/line + 复制）
+17. AI 模型路由（OpenAI / Ollama / Custom provider）
+18. Auto-update（`tauri-plugin-updater` + config）
+19. i18n（en.json + zh-CN.json + Settings 切换）
+20. 快捷键 ⌘F / ⌘/ + Help dialog
+21. Help / About 入口
+22. Image picker（file → base64 inline，5MiB cap）
+23. AI Token 用量（agent.py emit `__USAGE__:` + 后端 parse + UI 显示）
+
+**统计**：cargo test 10/10 ✓ / node test 31/31 ✓ / tsc 0 errors ✓ / vite build 11.65s ✓
 
 ---
 
@@ -98,6 +133,6 @@
 ```
 阶段 1 ████████████ 4/4 ✓
 阶段 2 ████████████ 4/4 ✓
-阶段 3 ██████████░░ 5/5 ✓（vitest 前端留 network blocker）
-阶段 4 ░░░░░░░░░░░░ 0/6（挂着）
+阶段 3 ██████████░░ 5/5 ✓
+阶段 4 ████████████ 10/10 ✓
 ```

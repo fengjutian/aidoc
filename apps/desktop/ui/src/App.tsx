@@ -14,6 +14,7 @@ import {
   Plus,
   Save,
   Settings as SettingsIcon,
+  Keyboard,
   Sparkles,
   Undo2,
   Search as SearchIcon,
@@ -24,6 +25,7 @@ import { AiChat } from "@/components/AiChat";
 import { AttributesDialog } from "@/components/AttributesDialog";
 import { BranchDialog } from "@/components/BranchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
+import { HelpDialog } from "@/components/HelpDialog";
 import { LinkDialog } from "@/components/LinkDialog";
 import { RevisionDiff } from "@/components/RevisionDiff";
 import { SaveStatus } from "@/components/SaveStatus";
@@ -32,6 +34,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useRecentFiles } from "@/hooks/useRecentFiles";
 import { useSettings } from "@/hooks/useSettings";
 import { useTheme } from "@/hooks/useTheme";
+import { createT, readSavedLocale } from "@/hooks/useI18n";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,6 +59,7 @@ interface Info {
   title: string;
   head_revision: string;
   entry: string;
+  source_path: string;
 }
 
 interface NodeRow {
@@ -86,7 +90,14 @@ export default function App() {
   const theme = useTheme();
   const { settings, update: updateSettings } = useSettings();
   const { recent, addOpened, remove: removeRecent } = useRecentFiles();
+  const language = readSavedLocale();
+  const t = createT(language);
   const [info, setInfo] = useState<Info | null>(null);
+  // Currently-open document tabs (most often a single one). The desktop
+  // backend holds one session at a time, so this is a 0..1 list — but the
+  // UI is shaped so adding multi-session support later is a backend-only
+  // change.
+  const [tabs, setTabs] = useState<Info[]>([]);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [revs, setRevs] = useState<RevisionRow[]>([]);
   const [relations, setRelations] = useState<RelationRow[]>([]);
@@ -102,6 +113,7 @@ export default function App() {
     { role: "user" | "assistant" | "error"; content: string }[]
   >([]);
   const [branchOpen, setBranchOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [linkSource, setLinkSource] = useState<string | null>(null);
   const [attrsNodeId, setAttrsNodeId] = useState<string | null>(null);
 
@@ -221,6 +233,7 @@ export default function App() {
       try {
         const i = await invoke<Info>("open_doc", { path: last });
         setInfo(i);
+        setTabs([i]);
         setDocPath(last);
       } catch {
         // File moved / deleted. Drop it from recents silently.
@@ -300,6 +313,18 @@ export default function App() {
         e.preventDefault();
         const next = `node-${nodes.length + 1}`;
         void onCreateNode(next, "section", "");
+      } else if (k === "f") {
+        // ⌘F: jump focus to the sidebar search box.
+        e.preventDefault();
+        const input = document.querySelector<HTMLInputElement>(
+          'input[placeholder^="Search nodes"]',
+        );
+        input?.focus();
+        input?.select();
+      } else if (k === "/") {
+        // ⌘/: open the keyboard-shortcut help dialog.
+        e.preventDefault();
+        setHelpOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -361,6 +386,7 @@ export default function App() {
         title: title || "Untitled",
       });
       setInfo(i);
+      setTabs([i]);
       setDocPath(path);
       addOpened(path);
     } catch (e) {
@@ -373,6 +399,7 @@ export default function App() {
     try {
       const i = await invoke<Info>("open_doc", { path });
       setInfo(i);
+      setTabs([i]);
       setDocPath(path);
       addOpened(path);
     } catch (e) {
@@ -479,6 +506,26 @@ export default function App() {
     }
   };
 
+  const closeTab = async () => {
+    // Backend holds a single session, so `close_doc` is global. We then
+    // reset everything that depends on it.
+    try {
+      await invoke("close_doc");
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    setInfo(null);
+    setTabs([]);
+    setNodes([]);
+    setRevs([]);
+    setRelations([]);
+    setActiveId(null);
+    setDocPath(null);
+    setTitle("");
+    setSaveState("never");
+  };
+
   const onExportHtml = async () => {
     setError(null);
     try {
@@ -521,17 +568,17 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <Sparkles className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">AIDoc Desktop</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("welcome.heading")}</h1>
         </div>
         <p className="max-w-md text-center text-sm text-muted-foreground">
-          No document open. Initialize a new <code className="rounded bg-muted px-1.5 py-0.5">.aidoc</code>{" "}
+          {t("welcome.subtitle", { ext: ".aidoc" }).replace(".aidoc", "")}<code className="rounded bg-muted px-1.5 py-0.5">.aidoc</code>{" "}
           or open an existing one.
         </p>
 
         {recent.length > 0 && (
           <div className="flex w-full max-w-xl flex-col gap-1.5 rounded-md border bg-card/60 p-3">
             <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <span>Recent</span>
+              <span>{t("welcome.recent")}</span>
               <span className="text-muted-foreground/60">{recent.length}</span>
             </div>
             <ul className="space-y-0.5">
@@ -589,11 +636,11 @@ export default function App() {
           <div className="flex gap-2">
             <Button onClick={initFromDialog} className="flex-1">
               <FilePlus className="mr-2 h-4 w-4" />
-              New document…
+              {t("welcome.newDoc")}
             </Button>
             <Button onClick={openFromDialog} variant="outline" className="flex-1">
               <FolderOpen className="mr-2 h-4 w-4" />
-              Open file…
+              {t("welcome.openFile")}
             </Button>
           </div>
         </div>
@@ -619,6 +666,30 @@ export default function App() {
             · head={info.head_revision}
           </span>
         </h1>
+
+        {tabs.length > 0 && (
+          <div className="mr-2 flex items-center gap-1 rounded-md border bg-muted/30 px-1 py-0.5">
+            <span className="px-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+              Tabs
+            </span>
+            <span className="rounded bg-background px-2 py-0.5 text-xs font-medium">
+              {tabs[0].title}
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Close current document"
+                  className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => void closeTab()}
+                >
+                  <XIcon className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Close document (back to welcome)</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -654,6 +725,21 @@ export default function App() {
             </Button>
           </TooltipTrigger>
           <TooltipContent>Ask AIDoc AI</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => setHelpOpen(true)}
+              aria-label="Keyboard shortcuts and about"
+            >
+              <Keyboard className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Shortcuts & about (⌘/)</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -723,7 +809,7 @@ export default function App() {
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline">
                   <Save className="mr-1.5 h-3.5 w-3.5" />
-                  Save
+                  {t("header.save")}
                   <span className="ml-1 text-xs text-muted-foreground">▾</span>
                 </Button>
               </DropdownMenuTrigger>
@@ -733,12 +819,12 @@ export default function App() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => void onSave()}>
               <Save className="text-muted-foreground" />
-              Save
+              {t("header.save")}
               <span className="ml-auto text-xs text-muted-foreground">⌘ S</span>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void onSaveAs()}>
               <FilePlus className="text-muted-foreground" />
-              Save As…
+              {t("header.saveAs")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -747,7 +833,7 @@ export default function App() {
           <TooltipTrigger asChild>
             <Button size="sm" variant="outline" onClick={onExportHtml}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
-              Export HTML
+              {t("header.exportHtml")}
             </Button>
           </TooltipTrigger>
           <TooltipContent>Render document to HTML and open in browser</TooltipContent>
@@ -757,7 +843,7 @@ export default function App() {
           <TooltipTrigger asChild>
             <Button size="sm" variant="outline" onClick={onExportMarkdown}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
-              Export MD
+              {t("header.exportMd")}
             </Button>
           </TooltipTrigger>
           <TooltipContent>Render document as Markdown and save as .md</TooltipContent>
@@ -837,7 +923,7 @@ export default function App() {
                 <>
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <FileText className="h-3.5 w-3.5" />
-                Nodes
+                {t("sidebar.nodes")}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -890,7 +976,7 @@ export default function App() {
 
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" />
-                History
+                {t("sidebar.history")}
               </div>
               <ol className="space-y-1">
                 {revs.map((r) => {
@@ -951,6 +1037,7 @@ export default function App() {
                 key={active.id}
                 kind={active.kind as never}
                 content={active.content}
+                attributes={active.attributes}
                 onChange={(html) => onUpdate(active.id, html)}
                 onKindChange={(kind) => onChangeKind(active.id, kind)}
               />
@@ -1059,6 +1146,8 @@ export default function App() {
           void refresh();
         }}
       />
+
+      <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </TooltipProvider>
   );
 }

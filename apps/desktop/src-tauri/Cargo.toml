@@ -15,8 +15,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 aidoc = { path = "../../../crates/aidoc" }
 aidoc-storage = { path = "../../../crates/aidoc-storage" }
+aidoc-package = { path = "../../../crates/aidoc-package" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
+tempfile = "3.13"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"

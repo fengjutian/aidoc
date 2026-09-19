@@ -4,7 +4,7 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
-    ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
+    ChangeType, Document, Manifest, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
     Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
     save_package,
     validator::{ValidationCategory, validate as core_validate},
@@ -38,6 +38,7 @@ struct InfoDto {
     title: String,
     head_revision: String,
     entry: String,
+    source_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -296,7 +297,38 @@ fn ai_chat_impl(
         for line in reader.lines() {
             match line {
                 Ok(chunk) => {
-                    let _ = app_for_thread.emit("ai-chunk", chunk);
+                    // `__USAGE__:prompt=N,completion=N,total=N` is a one-line
+                    // control record emitted by agent.py after every
+                    // OpenAI call. Strip the prefix and re-emit it on a
+                    // dedicated event so the UI can track token totals.
+                    if let Some(rest) = chunk.strip_prefix("__USAGE__:") {
+                        let mut prompt = 0u32;
+                        let mut completion = 0u32;
+                        let mut total = 0u32;
+                        for kv in rest.split(',') {
+                            let (k, v) = match kv.split_once('=') {
+                                Some(p) => p,
+                                None => continue,
+                            };
+                            let n = v.trim().parse::<u32>().unwrap_or(0);
+                            match k.trim() {
+                                "prompt" => prompt = n,
+                                "completion" => completion = n,
+                                "total" => total = n,
+                                _ => {}
+                            }
+                        }
+                        let _ = app_for_thread.emit(
+                            "ai-usage",
+                            serde_json::json!({
+                                "prompt": prompt,
+                                "completion": completion,
+                                "total": total,
+                            }),
+                        );
+                    } else {
+                        let _ = app_for_thread.emit("ai-chunk", chunk);
+                    }
                 }
                 Err(_) => break,
             }
@@ -402,6 +434,27 @@ fn open_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, 
     let info = read_info(&store, &package);
     *state.inner.lock().unwrap() = Some(SessionHandle { store, package });
     Ok(info)
+}
+
+/// Snapshot the currently open document(s). For now the desktop holds a
+/// single session at a time, but this returns a list so the UI can grow
+/// into tabs without another command rename.
+#[tauri::command]
+fn list_documents(state: tauri::State<'_, AppState>) -> Result<Vec<InfoDto>, String> {
+    let g = state.inner.lock().unwrap();
+    Ok(match g.as_ref() {
+        Some(s) => vec![read_info(&s.store, &s.package)],
+        None => vec![],
+    })
+}
+
+/// Drop the active session. Returns the new active info (or empty list
+/// if the workspace is empty).
+#[tauri::command]
+fn close_doc(state: tauri::State<'_, AppState>) -> Result<Vec<InfoDto>, String> {
+    let mut g = state.inner.lock().unwrap();
+    *g = None;
+    Ok(vec![])
 }
 
 #[tauri::command]
@@ -1077,6 +1130,7 @@ fn read_info(store: &Store, package: &aidoc::Package) -> InfoDto {
         title: package.manifest.document.title.clone(),
         head_revision: head,
         entry: package.manifest.entry.clone(),
+        source_path: package.source_path.display().to_string(),
     }
 }
 
@@ -1120,6 +1174,7 @@ fn seed_initial_revision(store: &mut Store, doc_id: &str) -> Result<(), String> 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             init_doc,
@@ -1149,6 +1204,8 @@ pub fn run() {
             merge_branch,
             ai_chat,
             abort_ai_chat,
+            list_documents,
+            close_doc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running AIDoc desktop");
@@ -1158,38 +1215,35 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn tempdir_in_cwd() -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("aidoc-test-{nanos}"));
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        dir
+    }
+
     #[test]
     fn parse_kind_maps_every_supported_string() {
-        // Every backend NodeKind variant except the ones that are pure-
-        // structural (`List` / `Code` / etc.) should round-trip here.
         let cases: &[(&str, &str)] = &[
-            ("section", "section"),
-            ("paragraph", "paragraph"),
-            ("heading", "heading"),
-            ("list", "list"),
-            ("list-item", "listitem"),
-            ("table", "table"),
-            ("table-row", "tablerow"),
-            ("table-cell", "tablecell"),
-            ("code", "code"),
-            ("blockquote", "blockquote"),
-            ("link", "link"),
-            ("image", "image"),
-            ("diagram", "diagram"),
-            ("code-ref", "coderef"),
-            ("requirement", "requirement"),
-            ("decision", "decision"),
-            ("problem", "problem"),
-            ("solution", "solution"),
-            ("reference", "reference"),
-            ("details", "details"),
-            ("summary", "summary"),
-            ("generic", "generic"),
+            ("section", "section"), ("paragraph", "paragraph"),
+            ("heading", "heading"), ("list", "list"),
+            ("list-item", "listitem"), ("table", "table"),
+            ("table-row", "tablerow"), ("table-cell", "tablecell"),
+            ("code", "code"), ("blockquote", "blockquote"),
+            ("link", "link"), ("image", "image"),
+            ("diagram", "diagram"), ("code-ref", "coderef"),
+            ("requirement", "requirement"), ("decision", "decision"),
+            ("problem", "problem"), ("solution", "solution"),
+            ("reference", "reference"), ("details", "details"),
+            ("summary", "summary"), ("generic", "generic"),
         ];
         for (input, expected_dbg) in cases {
             let kind = parse_kind(input).unwrap_or_else(|e| panic!("{input}: {e}"));
-            assert_eq!(format!("{kind:?}").to_lowercase(), *expected_dbg,
-                "kind string {input} should map to {expected_dbg}");
+            assert_eq!(format!("{kind:?}").to_lowercase(), *expected_dbg);
         }
     }
 
@@ -1201,19 +1255,10 @@ mod tests {
 
     #[test]
     fn resolve_mcp_bin_prefers_env_var() {
-        // Set the env var to a path that obviously does not exist and
-        // expect `resolve_mcp_bin` to refuse (env var set but missing).
         let bogus = PathBuf::from("Z:/definitely/does/not/exist/aidoc-mcp.exe");
-        // SAFETY: tests in this module are single-threaded for env mutation.
-        unsafe {
-            std::env::set_var("AIDOC_MCP_BIN", &bogus);
-        }
+        unsafe { std::env::set_var("AIDOC_MCP_BIN", &bogus); }
         let result = resolve_mcp_bin();
-        unsafe {
-            std::env::remove_var("AIDOC_MCP_BIN");
-        }
-        // When env var is set but invalid, resolve_mcp_bin should not return
-        // Some(bogus) — it should fall through to the other strategies.
+        unsafe { std::env::remove_var("AIDOC_MCP_BIN"); }
         if let Some(p) = result {
             assert_ne!(p, bogus, "must not honour an env var pointing at a missing file");
         }
@@ -1221,17 +1266,12 @@ mod tests {
 
     #[test]
     fn build_op_attaches_human_provenance() {
-        // Build a temp in-memory store so we can exercise build_op without
-        // touching the filesystem. The build_op helper only consults the
-        // store for the head revision, so an empty in-memory DB will
-        // surface as `no head revision`.
         let dir = tempdir_in_cwd();
         let db = dir.join("doc.db");
         let store = Store::open(&db).expect("open store");
-        let doc_id = "doc-test";
         let r = build_op(
             &store,
-            doc_id,
+            "doc-test",
             OperationType::Update,
             Some(NodeId::from_validated("root")),
             Some(Patch {
@@ -1241,19 +1281,105 @@ mod tests {
             }),
             "test reason",
         );
-        // No R000 seeded → expect "no head revision" error rather than panic.
         assert!(r.is_err(), "build_op must surface missing head as Err, not panic");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn tempdir_in_cwd() -> PathBuf {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("aidoc-test-{nanos}"));
-        std::fs::create_dir_all(&dir).expect("tempdir");
-        dir
+    #[test]
+    fn node_to_dto_serialises_kind_as_kebab() {
+        let mut n = Node::new(NodeId::from_validated("root"), NodeKind::CodeRef);
+        n.content = "see foo()".into();
+        let dto = node_to_dto(n);
+        assert_eq!(dto.kind, "code-ref");
+        assert_eq!(dto.id, "root");
+        assert_eq!(dto.content, "see foo()");
+    }
+
+    #[test]
+    fn node_to_dto_propagates_attributes() {
+        let mut n = Node::new(NodeId::from_validated("child"), NodeKind::Section);
+        n.attributes.insert("parent".to_string(), "root".to_string());
+        n.attributes.insert("anchor".to_string(), "intro".to_string());
+        let dto = node_to_dto(n);
+        assert_eq!(dto.attributes.get("parent").map(String::as_str), Some("root"));
+        assert_eq!(dto.attributes.get("anchor").map(String::as_str), Some("intro"));
+    }
+
+    #[test]
+    fn seed_root_writes_a_root_node() {
+        let dir = tempdir_in_cwd();
+        let db = dir.join("doc.db");
+        let mut store = Store::open(&db).expect("open store");
+        seed_root(&mut store, "doc-x", "Hello").expect("seed");
+        let nodes = aidoc_storage::crud::list_nodes(store.conn(), "doc-x")
+            .expect("list nodes");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id.as_str(), "root");
+        assert_eq!(nodes[0].content, "Hello");
+        assert!(matches!(nodes[0].kind, NodeKind::Section));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn seed_initial_revision_creates_R000() {
+        let dir = tempdir_in_cwd();
+        let db = dir.join("doc.db");
+        let mut store = Store::open(&db).expect("open store");
+        seed_root(&mut store, "doc-y", "T").expect("seed");
+        seed_initial_revision(&mut store, "doc-y").expect("seed rev");
+        let head = current_head(&store, "doc-y").expect("head");
+        assert_eq!(head, "R000");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_info_reports_document_title() {
+        let dir = tempdir_in_cwd();
+        let db = dir.join("doc.db");
+        let mut store = Store::open(&db).expect("open store");
+        seed_root(&mut store, "doc-z", "My Title").expect("seed");
+        seed_initial_revision(&mut store, "doc-z").expect("rev");
+        let head = current_head(&store, "doc-z").expect("head");
+        assert_eq!(head, "R000");
+        let manifest = Manifest::new("doc-z", "My Title", "R000");
+        assert_eq!(manifest.document.title, "My Title");
+        assert_eq!(manifest.document.id, "doc-z");
+        assert_eq!(manifest.revision.current, "R000");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tauri_conf_csp_drops_script_unsafe_inline() {
+        // Read `tauri.conf.json` and assert that the runtime CSP no longer
+        // permits inline scripts. Style-src may still allow it (React +
+        // mermaid emit inline styles).
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR must be set in cargo test");
+        let path = PathBuf::from(manifest_dir).join("tauri.conf.json");
+        let raw = std::fs::read_to_string(&path).expect("read tauri.conf.json");
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("parse tauri.conf.json");
+        let csp = v
+            .get("app")
+            .and_then(|a| a.get("security"))
+            .and_then(|s| s.get("csp"))
+            .and_then(|c| c.as_str())
+            .expect("tauri.conf.json app.security.csp");
+        for directive in csp.split(';') {
+            let d = directive.trim();
+            if d.starts_with("script-src") {
+                assert!(
+                    !d.contains("'unsafe-inline'"),
+                    "script-src must not allow inline execution after tightening; \
+                     got: {d}; full csp: {csp}",
+                );
+            }
+        }
+        // And style-src should still allow inline so React / mermaid keep
+        // working without us re-hashing every emitted style.
+        assert!(csp.contains("style-src"), "csp must declare style-src: {csp}");
+        assert!(
+            csp.split(';').any(|d| d.trim().starts_with("style-src") && d.contains("'unsafe-inline'")),
+            "style-src must still allow inline styles: {csp}",
+        );
     }
 }

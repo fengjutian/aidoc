@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Github, Info, KeyRound, RotateCcw, Save, Type, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -11,7 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import type { Settings } from "@/hooks/useSettings";
+import { resolveProviderDefaults, type Settings } from "@/hooks/useSettings";
+import { readSavedLocale, writeSavedLocale, type Locale } from "@/hooks/useI18n";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -110,6 +112,33 @@ function MermaidThemePicker({
   );
 }
 
+function LanguagePicker() {
+  const [current, setCurrent] = useState<Locale | "auto">(readSavedLocale());
+  const options: { id: Locale | "auto"; label: string }[] = [
+    { id: "auto", label: "Auto (browser)" },
+    { id: "en", label: "English" },
+    { id: "zh-CN", label: "简体中文" },
+  ];
+  return (
+    <select
+      value={current}
+      onChange={(e) => {
+        const next = e.target.value as Locale | "auto";
+        writeSavedLocale(next);
+        setCurrent(next);
+        if (typeof window !== "undefined") window.location.reload();
+      }}
+      className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function SettingsPanel({
   open,
   onOpenChange,
@@ -166,6 +195,16 @@ export function SettingsPanel({
 
           <Separator />
 
+          <Row
+            icon={Type}
+            title="Language"
+            description="Display language for UI labels and tooltips."
+          >
+            <LanguagePicker />
+          </Row>
+
+          <Separator />
+
           <div className="py-3">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
@@ -179,6 +218,31 @@ export function SettingsPanel({
               </div>
             </div>
             <div className="mt-3 grid gap-2">
+              <select
+                value={settings.aiProvider}
+                onChange={(e) => {
+                  const provider = e.target.value as Settings["aiProvider"];
+                  // Reset base_url / model to the new provider's defaults so
+                  // users don't accidentally keep a stale override from the
+                  // previous provider.
+                  const defaults = resolveProviderDefaults({
+                    ...settings,
+                    aiProvider: provider,
+                    openaiBaseUrl: "",
+                    openaiModel: "",
+                  });
+                  onUpdate({
+                    aiProvider: provider,
+                    openaiBaseUrl: defaults.baseUrl,
+                    openaiModel: defaults.model,
+                  });
+                }}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="openai">OpenAI (api.openai.com)</option>
+                <option value="ollama">Ollama (localhost:11434)</option>
+                <option value="custom">Custom OpenAI-compatible URL</option>
+              </select>
               <input
                 type="password"
                 placeholder="API key (sk-…)"

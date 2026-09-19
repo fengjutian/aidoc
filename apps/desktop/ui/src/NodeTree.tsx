@@ -16,6 +16,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { buildTreeIndex } from "./nodeTreeIndex";
 
 interface NodeRow {
   id: string;
@@ -47,19 +48,7 @@ const kindIcon = (kind: string): LucideIcon => {
 };
 
 export function NodeTree(props: NodeTreeProps) {
-  const byParent = new Map<string | null, NodeRow[]>();
-  const known = new Set(props.nodes.map((n) => n.id));
-  for (const n of props.nodes) {
-    const raw = n.attributes?.parent;
-    const key = raw && raw !== n.id && known.has(raw) ? raw : null;
-    const arr = byParent.get(key) ?? [];
-    arr.push(n);
-    byParent.set(key, arr);
-  }
-  for (const arr of byParent.values()) {
-    arr.sort((a, b) => a.position - b.position);
-  }
-  const roots = byParent.get(null) ?? [];
+  const { byParent, roots } = buildTreeIndex(props.nodes);
   return (
     <ul className="space-y-0.5">
       {roots.map((n) => (

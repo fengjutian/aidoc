@@ -189,7 +189,22 @@ def chat_completion(
     headers = {"Authorization": f"Bearer {api_key}"}
     resp = client.post(url, json=body, headers=headers, timeout=60.0)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    # Emit a one-line token-usage record on stdout so the Tauri side can
+    # display running totals. Format: `__USAGE__:prompt=N,completion=N,total=N`
+    # Older / non-conforming endpoints omit `usage`; we just skip silently.
+    usage = data.get("usage") or {}
+    if usage:
+        try:
+            print(
+                f"__USAGE__:prompt={int(usage.get('prompt_tokens', 0))},"
+                f"completion={int(usage.get('completion_tokens', 0))},"
+                f"total={int(usage.get('total_tokens', 0))}",
+                flush=True,
+            )
+        except (TypeError, ValueError):
+            pass
+    return data
 
 
 # ---------- Agent loop ----------

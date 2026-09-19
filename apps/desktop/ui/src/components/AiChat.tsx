@@ -81,6 +81,7 @@ export function AiChat({
   const [prompt, setPrompt] = useState("");
   const [history, setHistory] = useState<ChatTurn[]>(initialHistory);
   const [pending, setPending] = useState(false);
+  const [tokens, setTokens] = useState({ prompt: 0, completion: 0, total: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Re-seed history when the document changes (initialHistory is a fresh prop).
@@ -240,6 +241,7 @@ export function AiChat({
     setHistory(next);
     setPrompt("");
     setPending(true);
+    setTokens({ prompt: 0, completion: 0, total: 0 });
 
     // Reserve a slot for the assistant turn; we'll mutate it as chunks arrive.
     const assistantIdx = next.length;
@@ -280,7 +282,17 @@ export function AiChat({
         setHistory((h) => [...h, { role: "error", content: e.payload }]);
         setPending(false);
       });
-      unlistenersRef.current = [chunkUn, stderrUn, doneUn, errorUn];
+      const usageUn = await listen<{ prompt: number; completion: number; total: number }>(
+        "ai-usage",
+        (e) => {
+          setTokens((t) => ({
+            prompt: t.prompt + (e.payload.prompt || 0),
+            completion: t.completion + (e.payload.completion || 0),
+            total: t.total + (e.payload.total || 0),
+          }));
+        },
+      );
+      unlistenersRef.current = [chunkUn, stderrUn, doneUn, errorUn, usageUn];
 
       await invoke("ai_chat", {
         prompt: text,
@@ -361,6 +373,12 @@ export function AiChat({
             </div>
           )}
         </DialogHeader>
+
+        {tokens.total > 0 && (
+          <div className="border-b bg-muted/20 px-5 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+            tokens: prompt {tokens.prompt} · completion {tokens.completion} · total {tokens.total}
+          </div>
+        )}
 
         <ScrollArea className="max-h-[60vh]">
           <div className="space-y-3 p-5">

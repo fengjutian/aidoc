@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 
-const STORAGE_KEY = "aidoc-recent-files";
-const MAX_ENTRIES = 8;
+export const STORAGE_KEY = "aidoc-recent-files";
+export const MAX_ENTRIES = 8;
 
-function read(): string[] {
+/** Pure helper extracted from the hook so it can be unit-tested without React. */
+export function mergeRecent(
+  entries: string[],
+  path: string,
+  max: number = MAX_ENTRIES,
+): string[] {
+  const filtered = entries.filter((p) => p !== path);
+  return [path, ...filtered].slice(0, max);
+}
+
+/** Pure helper: parse a localStorage blob, fall back to []. */
+export function parseStored(raw: string | null): string[] {
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed)
       ? parsed.filter((v): v is string => typeof v === "string")
@@ -14,6 +24,10 @@ function read(): string[] {
   } catch {
     return [];
   }
+}
+
+function read(): string[] {
+  return parseStored(localStorage.getItem(STORAGE_KEY));
 }
 
 function write(entries: string[]) {
