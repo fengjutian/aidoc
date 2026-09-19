@@ -235,6 +235,19 @@ fn save_doc(state: tauri::State<'_, AppState>) -> Result<(), String> {
     save_package(&mut s.package, &s.store).map_err(err)
 }
 
+/// Save the current workspace to a new `.aidoc` path and switch the active
+/// document to it. Subsequent `save_doc` calls write to the new path.
+#[tauri::command]
+fn save_doc_as(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    s.package.source_path = PathBuf::from(path);
+    save_package(&mut s.package, &s.store).map_err(err)
+}
+
 #[tauri::command]
 fn list_nodes(state: tauri::State<'_, AppState>) -> Result<Vec<NodeDto>, String> {
     let g = state.inner.lock().unwrap();
@@ -423,8 +436,14 @@ fn parse_kind(s: &str) -> Result<NodeKind, String> {
         "paragraph" => Ok(NodeKind::Paragraph),
         "heading" => Ok(NodeKind::Heading),
         "list" => Ok(NodeKind::List),
+        "list-item" => Ok(NodeKind::ListItem),
+        "table" => Ok(NodeKind::Table),
+        "table-row" => Ok(NodeKind::TableRow),
+        "table-cell" => Ok(NodeKind::TableCell),
         "code" => Ok(NodeKind::Code),
         "blockquote" => Ok(NodeKind::Blockquote),
+        "link" => Ok(NodeKind::Link),
+        "image" => Ok(NodeKind::Image),
         "diagram" => Ok(NodeKind::Diagram),
         "code-ref" => Ok(NodeKind::CodeRef),
         "requirement" => Ok(NodeKind::Requirement),
@@ -432,6 +451,8 @@ fn parse_kind(s: &str) -> Result<NodeKind, String> {
         "problem" => Ok(NodeKind::Problem),
         "solution" => Ok(NodeKind::Solution),
         "reference" => Ok(NodeKind::Reference),
+        "details" => Ok(NodeKind::Details),
+        "summary" => Ok(NodeKind::Summary),
         "generic" => Ok(NodeKind::Generic),
         other => Err(format!("unknown kind: {other}")),
     }
@@ -928,6 +949,7 @@ pub fn run() {
             init_doc,
             open_doc,
             save_doc,
+            save_doc_as,
             list_nodes,
             list_revisions,
             update_node,

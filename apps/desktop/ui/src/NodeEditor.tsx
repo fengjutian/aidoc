@@ -9,15 +9,20 @@ import {
   Bold,
   BookmarkCheck,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Code,
   Code2,
   FileText,
   Heading2,
   Heading3,
+  Image as ImageIcon,
   Italic,
+  Link2,
   List,
   ListOrdered,
   Quote,
+  Table as TableIcon,
   Workflow,
   Wrench,
   BookOpen,
@@ -167,8 +172,14 @@ const KINDS: KindDef[] = [
   { id: "heading",     label: "Heading",     Icon: Heading2,       tone: "" },
   { id: "paragraph",   label: "Paragraph",   Icon: AlignLeft,      tone: "" },
   { id: "list",        label: "List",        Icon: List,           tone: "" },
+  { id: "list-item",   label: "List item",   Icon: ListOrdered,    tone: "" },
+  { id: "table",       label: "Table",       Icon: TableIcon,      tone: "" },
+  { id: "table-row",   label: "Table row",   Icon: TableIcon,      tone: "" },
+  { id: "table-cell",  label: "Table cell",  Icon: TableIcon,      tone: "" },
   { id: "code",        label: "Code",        Icon: Code,           tone: "" },
   { id: "blockquote",  label: "Quote",       Icon: Quote,          tone: "" },
+  { id: "link",        label: "Link",        Icon: Link2,          tone: "text-cyan-500" },
+  { id: "image",       label: "Image",       Icon: ImageIcon,      tone: "text-fuchsia-500" },
   { id: "diagram",     label: "Diagram",     Icon: Workflow,       tone: "" },
   { id: "code-ref",    label: "Code ref",    Icon: Code2,          tone: "text-indigo-500" },
   { id: "requirement", label: "Requirement", Icon: BookmarkCheck,  tone: "text-blue-500" },
@@ -176,6 +187,9 @@ const KINDS: KindDef[] = [
   { id: "problem",     label: "Problem",     Icon: AlertOctagon,   tone: "text-rose-500" },
   { id: "solution",    label: "Solution",    Icon: Wrench,         tone: "text-amber-500" },
   { id: "reference",   label: "Reference",   Icon: BookOpen,       tone: "" },
+  { id: "details",     label: "Details",     Icon: ChevronDown,    tone: "" },
+  { id: "summary",     label: "Summary",     Icon: ChevronRight,   tone: "" },
+  { id: "generic",     label: "Generic",     Icon: AlignLeft,      tone: "" },
 ];
 
 function KindStrip({
@@ -326,6 +340,29 @@ function wrapForKind(kind: Kind, content: string): string {
       return `<p><strong>code-ref</strong> — ${escapeHtml(content)}</p>`;
     case "heading":
       return `<h2>${escapeHtml(content)}</h2>`;
+    case "list-item":
+      return `<ul><li>${escapeHtml(content)}</li></ul>`;
+    case "table":
+      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
+    case "table-row":
+      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
+    case "table-cell":
+      return `<table><tbody><tr><td>${escapeHtml(content)}</td></tr></tbody></table>`;
+    case "link":
+      // content is the URL; the label becomes the URL itself.
+      return `<p><a href="${escapeHtml(content)}">${escapeHtml(content)}</a></p>`;
+    case "image":
+      // content is the image URL; renders as <img> in HTML export.
+      return `<p><img src="${escapeHtml(content)}" alt="image"/></p>`;
+    case "details":
+      return `<details><summary>Details</summary><p>${escapeHtml(content)}</p></details>`;
+    case "summary":
+      return `<summary>${escapeHtml(content)}</summary>`;
+    case "generic":
+    case "paragraph":
+    case "section":
+    case "reference":
+    case "list":
     default:
       // Paragraph / generic: each newline becomes a new <p>.
       return content
@@ -348,6 +385,22 @@ function unwrapForKind(kind: Kind, html: string): string {
     case "code-ref":
     case "heading":
       return stripTags(html, "h2,p,h3,h4,strong");
+    case "link":
+    case "image": {
+      // Pull the URL back out of href / src.
+      const m = html.match(/(?:href|src)="([^"]+)"/);
+      return m ? m[1] : stripTags(html, "p,a,img");
+    }
+    case "list-item":
+      return stripTags(html, "ul,li");
+    case "table":
+    case "table-row":
+    case "table-cell":
+      return stripTags(html, "table,tbody,tr,td");
+    case "details":
+      return stripTags(html, "details,summary,p");
+    case "summary":
+      return stripTags(html, "summary");
     default:
       return stripTags(html, "p");
   }

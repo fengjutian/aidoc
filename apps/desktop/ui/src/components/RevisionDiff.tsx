@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  ArrowRight,
+  GitCompare,
   GitMerge,
   Link2,
   Link2Off,
@@ -33,10 +35,38 @@ interface Change {
   after_hash: string | null;
 }
 
+interface DiffEntry {
+  node: string;
+  status: string; // "added" | "removed" | "changed"
+  before: string | null;
+  after: string | null;
+}
+
+interface DiffReport {
+  from: string;
+  to: string;
+  added: number;
+  removed: number;
+  changed: number;
+  entries: DiffEntry[];
+}
+
+interface RevisionRow {
+  id: string;
+  parent: string | null;
+  operation: string;
+  created_at: string;
+  message: string | null;
+}
+
 interface RevisionDiffProps {
   revId: string | null;
   onClose: () => void;
+  revs: RevisionRow[];
+  headRevision: string | null;
 }
+
+type Mode = "changes" | "compare";
 
 const TYPE_META: Record<
   string,
@@ -94,13 +124,100 @@ const TYPE_META: Record<
   },
 };
 
+const DIFF_META: Record<string, { label: string; tone: string }> = {
+  added: {
+    label: "Added",
+    tone: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+  },
+  removed: {
+    label: "Removed",
+    tone: "bg-destructive/10 text-destructive border-destructive/30",
+  },
+  changed: {
+    label: "Changed",
+    tone: "bg-blue-500/10 text-blue-600 border-blue-500/30",
+  },
+};
+
 const FALLBACK_META = {
   label: "Change",
   icon: Pencil,
   tone: "bg-muted text-muted-foreground border-border",
 };
 
-export function RevisionDiff({ revId, onClose }: RevisionDiffProps) {
+export function RevisionDiff({
+  revId,
+  onClose,
+  revs,
+  headRevision,
+}: RevisionDiffProps) {
+  const [mode, setMode] = useState<Mode>("changes");
+
+  return (
+    <Dialog open={!!revId} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl gap-0 p-0">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            <span>Revision</span>
+            <code className="rounded bg-muted px-2 py-0.5 font-mono text-sm">
+              {revId}
+            </code>
+          </DialogTitle>
+          <DialogDescription>
+            Inspect what this revision recorded, or pick two revisions to diff.
+          </DialogDescription>
+          <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-0.5">
+            <TabButton active={mode === "changes"} onClick={() => setMode("changes")}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Changes
+            </TabButton>
+            <TabButton active={mode === "compare"} onClick={() => setMode("compare")}>
+              <GitCompare className="mr-1.5 h-3.5 w-3.5" />
+              Compare A→B
+            </TabButton>
+          </div>
+        </DialogHeader>
+
+        {mode === "changes" ? (
+          <ChangesPane revId={revId} />
+        ) : (
+          <ComparePane revs={revs} headRevision={headRevision} />
+        )}
+
+        <div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 items-center rounded px-2 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ChangesPane({ revId }: { revId: string | null }) {
   const [changes, setChanges] = useState<Change[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,120 +251,279 @@ export function RevisionDiff({ revId, onClose }: RevisionDiffProps) {
     : {};
 
   return (
-    <Dialog open={!!revId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl gap-0 p-0">
-        <DialogHeader className="border-b px-5 py-4">
-          <DialogTitle className="flex items-center gap-2">
-            <span>Revision</span>
-            <code className="rounded bg-muted px-2 py-0.5 font-mono text-sm">
-              {revId}
-            </code>
-          </DialogTitle>
-          <DialogDescription>
-            Per-node changes recorded by this revision. History is immutable.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <div className="border-b bg-muted/30 px-5 py-2.5">
+        {changes == null && error == null && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading changes…
+          </div>
+        )}
+        {error && (
+          <div className="text-sm text-destructive">Failed: {error}</div>
+        )}
+        {changes && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {Object.entries(counts).map(([k, n]) => {
+              const meta = TYPE_META[k] ?? FALLBACK_META;
+              const Icon = meta.icon;
+              return (
+                <span
+                  key={k}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+                    meta.tone,
+                  )}
+                >
+                  <Icon className="h-3 w-3" />
+                  {meta.label}
+                  <span className="ml-1 opacity-60">{n}</span>
+                </span>
+              );
+            })}
+            <span className="ml-auto text-muted-foreground">
+              {changes.length} change{changes.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
+      </div>
 
-        <div className="border-b bg-muted/30 px-5 py-2.5">
-          {changes == null && error == null && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading changes…
-            </div>
-          )}
-          {error && (
-            <div className="text-sm text-destructive">Failed: {error}</div>
-          )}
-          {changes && (
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {Object.entries(counts).map(([k, n]) => {
-                const meta = TYPE_META[k] ?? FALLBACK_META;
-                const Icon = meta.icon;
-                return (
+      <ScrollArea className="max-h-[60vh]">
+        {changes && changes.length === 0 && (
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No node-level changes recorded for this revision.
+          </div>
+        )}
+        {changes && changes.length > 0 && (
+          <ul className="divide-y">
+            {changes.map((c, i) => {
+              const meta = TYPE_META[c.change_type] ?? FALLBACK_META;
+              const Icon = meta.icon;
+              return (
+                <li key={`${c.node}-${i}`} className="flex items-start gap-3 px-5 py-3">
                   <span
-                    key={k}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
+                      "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border",
                       meta.tone,
                     )}
                   >
-                    <Icon className="h-3 w-3" />
-                    {meta.label}
-                    <span className="ml-1 opacity-60">{n}</span>
+                    <Icon className="h-3.5 w-3.5" />
                   </span>
-                );
-              })}
-              <span className="ml-auto text-muted-foreground">
-                {changes.length} change{changes.length === 1 ? "" : "s"}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <ScrollArea className="max-h-[60vh]">
-          {changes && changes.length === 0 && (
-            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-              No node-level changes recorded for this revision.
-            </div>
-          )}
-          {changes && changes.length > 0 && (
-            <ul className="divide-y">
-              {changes.map((c, i) => {
-                const meta = TYPE_META[c.change_type] ?? FALLBACK_META;
-                const Icon = meta.icon;
-                return (
-                  <li key={`${c.node}-${i}`} className="flex items-start gap-3 px-5 py-3">
-                    <span
-                      className={cn(
-                        "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border",
-                        meta.tone,
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <code className="truncate font-mono text-sm">
-                          {c.node}
-                        </code>
-                        <span className="text-xs uppercase tracking-wider text-muted-foreground">
-                          {meta.label}
-                        </span>
-                      </div>
-                      {c.summary && (
-                        <div className="mt-0.5 text-sm text-muted-foreground">
-                          {c.summary}
-                        </div>
-                      )}
-                      {(c.before_hash || c.after_hash) && (
-                        <div className="mt-1 flex gap-3 font-mono text-[10px] text-muted-foreground">
-                          {c.before_hash && (
-                            <span>
-                              before: <code>{shortHash(c.before_hash)}</code>
-                            </span>
-                          )}
-                          {c.after_hash && (
-                            <span>
-                              after: <code>{shortHash(c.after_hash)}</code>
-                            </span>
-                          )}
-                        </div>
-                      )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <code className="truncate font-mono text-sm">
+                        {c.node}
+                      </code>
+                      <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {meta.label}
+                      </span>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </ScrollArea>
+                    {c.summary && (
+                      <div className="mt-0.5 text-sm text-muted-foreground">
+                        {c.summary}
+                      </div>
+                    )}
+                    {(c.before_hash || c.after_hash) && (
+                      <div className="mt-1 flex gap-3 font-mono text-[10px] text-muted-foreground">
+                        {c.before_hash && (
+                          <span>
+                            before: <code>{shortHash(c.before_hash)}</code>
+                          </span>
+                        )}
+                        {c.after_hash && (
+                          <span>
+                            after: <code>{shortHash(c.after_hash)}</code>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ScrollArea>
+    </>
+  );
+}
 
-        <div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+interface ComparePaneProps {
+  revs: RevisionRow[];
+  headRevision: string | null;
+}
+
+function ComparePane({ revs, headRevision }: ComparePaneProps) {
+  const sortedRevs = useMemo(() => [...revs].reverse(), [revs]); // newest first
+  const defaultFrom = sortedRevs.length >= 2 ? sortedRevs[1].id : sortedRevs[0]?.id ?? "";
+  const defaultTo = sortedRevs[0]?.id ?? headRevision ?? "";
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo] = useState(defaultTo);
+  const [report, setReport] = useState<DiffReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Re-default when revs first arrive.
+  useEffect(() => {
+    if (sortedRevs.length > 0 && !sortedRevs.some((r) => r.id === from)) {
+      setFrom(sortedRevs.length >= 2 ? sortedRevs[1].id : sortedRevs[0].id);
+    }
+    if (sortedRevs.length > 0 && !sortedRevs.some((r) => r.id === to)) {
+      setTo(sortedRevs[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedRevs]);
+
+  useEffect(() => {
+    if (!from || !to || from === to) {
+      setReport(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setReport(null);
+    (async () => {
+      try {
+        const r = await invoke<DiffReport>("diff_revisions", { from, to });
+        if (!cancelled) setReport(r);
+      } catch (e) {
+        if (!cancelled) setError(String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to]);
+
+  const disabled = sortedRevs.length < 2;
+
+  return (
+    <>
+      <div className="border-b bg-muted/30 px-5 py-3">
+        {disabled ? (
+          <div className="text-xs text-muted-foreground">
+            Need at least two revisions to diff.
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            >
+              {sortedRevs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.id}  ·  {r.message ?? r.operation}
+                </option>
+              ))}
+            </select>
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            >
+              {sortedRevs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.id}  ·  {r.message ?? r.operation}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="border-b bg-muted/30 px-5 py-2.5">
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Computing diff…
+          </div>
+        )}
+        {error && (
+          <div className="text-sm text-destructive">Failed: {error}</div>
+        )}
+        {report && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-full border bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-600">
+              Added {report.added}
+            </span>
+            <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
+              Removed {report.removed}
+            </span>
+            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 font-medium text-blue-600">
+              Changed {report.changed}
+            </span>
+            <span className="ml-auto text-muted-foreground">
+              {report.entries.length} entr{report.entries.length === 1 ? "y" : "ies"}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <ScrollArea className="max-h-[60vh]">
+        {!report && !loading && !error && (
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+            Select two revisions to compare.
+          </div>
+        )}
+        {report && report.entries.length === 0 && (
+          <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+            No node-level differences between these revisions.
+          </div>
+        )}
+        {report && report.entries.length > 0 && (
+          <ul className="divide-y">
+            {report.entries.map((e, i) => {
+              const meta = DIFF_META[e.status] ?? {
+                label: e.status,
+                tone: FALLBACK_META.tone,
+              };
+              return (
+                <li key={`${e.node}-${i}`} className="flex items-start gap-3 px-5 py-3">
+                  <span
+                    className={cn(
+                      "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border px-1 text-[10px] font-semibold uppercase",
+                      meta.tone,
+                    )}
+                  >
+                    {meta.label[0]}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <code className="truncate font-mono text-sm">
+                        {e.node}
+                      </code>
+                      <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                        {meta.label}
+                      </span>
+                    </div>
+                    {(e.before || e.after) && (
+                      <div className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
+                        {e.before && (
+                          <span>
+                            before: <code>{shortHash(e.before)}</code>
+                          </span>
+                        )}
+                        {e.after && (
+                          <span>
+                            after: <code>{shortHash(e.after)}</code>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ScrollArea>
+    </>
   );
 }
 

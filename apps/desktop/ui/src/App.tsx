@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertCircle,
   Clock,
-  Copy,
   Download,
-  ExternalLink,
   Eye,
   FilePlus,
   FileText,
@@ -17,29 +15,30 @@ import {
   Save,
   Settings as SettingsIcon,
   Sparkles,
-  Trash2,
   Undo2,
   Search as SearchIcon,
   X as XIcon,
 } from "lucide-react";
 
 import { AiChat } from "@/components/AiChat";
+import { AttributesDialog } from "@/components/AttributesDialog";
 import { BranchDialog } from "@/components/BranchDialog";
 import { CommandPalette } from "@/components/CommandPalette";
+import { LinkDialog } from "@/components/LinkDialog";
 import { RevisionDiff } from "@/components/RevisionDiff";
 import { SaveStatus } from "@/components/SaveStatus";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useRecentFiles } from "@/hooks/useRecentFiles";
 import { useSettings } from "@/hooks/useSettings";
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -50,6 +49,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { NodeEditor } from "@/NodeEditor";
+import { NodeTree } from "@/NodeTree";
 
 interface Info {
   doc_id: string;
@@ -64,6 +64,7 @@ interface NodeRow {
   parent: string | null;
   position: number;
   content: string;
+  attributes?: Record<string, string>;
 }
 
 interface RevisionRow {
@@ -74,19 +75,21 @@ interface RevisionRow {
   message: string | null;
 }
 
-const kindIcon = (kind: string) => {
-  // All AIDoc node kinds render with FileText by default; surface a few
-  // distinguishing glyphs without coupling to the full kind taxonomy.
-  if (kind === "section" || kind === "heading") return FileText;
-  return FileText;
-};
+interface RelationRow {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+}
 
 export default function App() {
   const theme = useTheme();
   const { settings, update: updateSettings } = useSettings();
+  const { recent, addOpened, remove: removeRecent } = useRecentFiles();
   const [info, setInfo] = useState<Info | null>(null);
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [revs, setRevs] = useState<RevisionRow[]>([]);
+  const [relations, setRelations] = useState<RelationRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [initPath, setInitPath] = useState("");
@@ -96,6 +99,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
+  const [linkSource, setLinkSource] = useState<string | null>(null);
+  const [attrsNodeId, setAttrsNodeId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [docPath, setDocPath] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "dirty" | "never">("never");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -106,12 +112,14 @@ export default function App() {
   const refresh = async () => {
     if (!info) return;
     try {
-      const [n, r] = await Promise.all([
+      const [n, r, rel] = await Promise.all([
         invoke<NodeRow[]>("list_nodes"),
         invoke<RevisionRow[]>("list_revisions"),
+        invoke<RelationRow[]>("list_relations"),
       ]);
       setNodes(n);
       setRevs(r);
+      setRelations(rel);
       setInfo((prev) =>
         prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev,
       );
@@ -124,6 +132,28 @@ export default function App() {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.doc_id]);
+
+  // Auto-restore the most-recently-opened .aidoc on first paint, if the file
+  // still exists. Failed attempts (missing / moved files) fall through to
+  // the welcome screen with no error — user can pick from the Recent list.
+  const autoOpenAttempted = useRef(false);
+  useEffect(() => {
+    if (autoOpenAttempted.current) return;
+    autoOpenAttempted.current = true;
+    const last = recent[0];
+    if (!last) return;
+    void (async () => {
+      try {
+        const i = await invoke<Info>("open_doc", { path: last });
+        setInfo(i);
+        setDocPath(last);
+      } catch {
+        // File moved / deleted. Drop it from recents silently.
+        removeRecent(last);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Apply editor font size to a CSS var the stylesheet reads.
   useEffect(() => {
@@ -257,6 +287,7 @@ export default function App() {
       });
       setInfo(i);
       setDocPath(path);
+      addOpened(path);
     } catch (e) {
       setError(String(e));
     }
@@ -268,6 +299,7 @@ export default function App() {
       const i = await invoke<Info>("open_doc", { path });
       setInfo(i);
       setDocPath(path);
+      addOpened(path);
     } catch (e) {
       setError(String(e));
     }
@@ -322,19 +354,6 @@ export default function App() {
     }
   };
 
-  const onMoveNode = async (target: string, newPosition: number) => {
-    setError(null);
-    try {
-      await invoke<string>("move_node", {
-        target,
-        newPosition,
-      });
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
   const onCopyId = async (id: string) => {
     try {
       await navigator.clipboard.writeText(id);
@@ -358,6 +377,25 @@ export default function App() {
     setSaveState("saving");
     try {
       await invoke("save_doc");
+      setLastSavedAt(new Date());
+      setSaveState("saved");
+    } catch (e) {
+      setError(String(e));
+      setSaveState("idle");
+    }
+  };
+
+  const onSaveAs = async () => {
+    setError(null);
+    const defaultName =
+      (info?.title || "untitled").toLowerCase().replace(/\s+/g, "-") + ".aidoc";
+    const picked = await pickSavePath(defaultName);
+    if (!picked) return;
+    setSaveState("saving");
+    try {
+      await invoke("save_doc_as", { path: picked });
+      setDocPath(picked);
+      addOpened(picked);
       setLastSavedAt(new Date());
       setSaveState("saved");
     } catch (e) {
@@ -414,6 +452,37 @@ export default function App() {
           No document open. Initialize a new <code className="rounded bg-muted px-1.5 py-0.5">.aidoc</code>{" "}
           or open an existing one.
         </p>
+
+        {recent.length > 0 && (
+          <div className="flex w-full max-w-xl flex-col gap-1.5 rounded-md border bg-card/60 p-3">
+            <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>Recent</span>
+              <span className="text-muted-foreground/60">{recent.length}</span>
+            </div>
+            <ul className="space-y-0.5">
+              {recent.slice(0, 5).map((p) => (
+                <li key={p} className="group flex items-center gap-1 rounded-md hover:bg-accent">
+                  <button
+                    type="button"
+                    onClick={() => void onOpen(p)}
+                    className="flex flex-1 items-center gap-2 truncate rounded-md px-2 py-1 text-left text-sm"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-mono text-xs">{p}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Forget ${p}`}
+                    className="mr-1 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                    onClick={() => removeRecent(p)}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="flex w-full max-w-xl flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
           <div className="flex gap-2">
             <input
@@ -573,15 +642,31 @@ export default function App() {
           <TooltipContent>Create a new .aidoc file (current doc will be discarded)</TooltipContent>
         </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="sm" variant="outline" onClick={onSave}>
-              <Save className="mr-1.5 h-3.5 w-3.5" />
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                  Save
+                  <span className="ml-1 text-xs text-muted-foreground">▾</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Save (⇧ for Save As)</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => void onSave()}>
+              <Save className="text-muted-foreground" />
               Save
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Persist current state to .aidoc</TooltipContent>
-        </Tooltip>
+              <span className="ml-auto text-xs text-muted-foreground">⌘ S</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onSaveAs()}>
+              <FilePlus className="text-muted-foreground" />
+              Save As…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -695,100 +780,34 @@ export default function App() {
                   <TooltipContent>Add new section node</TooltipContent>
                 </Tooltip>
               </div>
-              <ul className="space-y-0.5">
-                {nodes
-                  .slice()
-                  .sort((a, b) => a.position - b.position)
-                  .map((n) => {
-                    const Icon = kindIcon(n.kind);
-                    const dropTarget = dragOverId === n.id;
-                    return (
-                      <li
-                        key={n.id}
-                        onDragOver={(e) => {
-                          if (e.dataTransfer.types.includes("application/x-aidoc-node")) {
-                            e.preventDefault();
-                            e.dataTransfer.dropEffect = "move";
-                            setDragOverId(n.id);
-                          }
-                        }}
-                        onDragLeave={(e) => {
-                          if (e.currentTarget === e.target) setDragOverId(null);
-                        }}
-                        onDrop={(e) => {
-                          const draggedId = e.dataTransfer.getData(
-                            "application/x-aidoc-node",
-                          );
-                          setDragOverId(null);
-                          if (!draggedId || draggedId === n.id) return;
-                          // Drop above target → take target's position;
-                          // dragged node will sort before it after refresh.
-                          const newPos = n.position;
-                          void onMoveNode(draggedId, newPos);
-                        }}
-                        className={cn(
-                          dropTarget && "ring-2 ring-primary/60 ring-offset-1 rounded-md",
-                        )}
-                      >
-                        <ContextMenu>
-                          <ContextMenuTrigger asChild>
-                            <button
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData(
-                                  "application/x-aidoc-node",
-                                  n.id,
-                                );
-                                e.dataTransfer.effectAllowed = "move";
-                              }}
-                              onClick={() => setActiveId(n.id)}
-                              className={cn(
-                                "flex w-full cursor-grab items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent active:cursor-grabbing",
-                                n.id === activeId &&
-                                  "bg-accent font-medium text-accent-foreground",
-                              )}
-                            >
-                              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                              <span className="truncate">{n.id}</span>
-                              <span className="ml-auto text-[10px] uppercase text-muted-foreground">
-                                {n.kind}
-                              </span>
-                            </button>
-                          </ContextMenuTrigger>
-                          <ContextMenuContent className="w-48">
-                            <ContextMenuItem
-                              onSelect={() => {
-                                setActiveId(n.id);
-                              }}
-                            >
-                              <ExternalLink className="text-muted-foreground" />
-                              Open in editor
-                            </ContextMenuItem>
-                            <ContextMenuItem
-                              onSelect={() => {
-                                void onCopyId(n.id);
-                              }}
-                            >
-                              <Copy className="text-muted-foreground" />
-                              Copy node ID
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              disabled={n.id === "root"}
-                              onSelect={() => {
-                                void onDeleteNode(n.id);
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 />
-                              Delete node
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      </li>
-                    );
-                  })}
-              </ul>
+              <NodeTree
+                nodes={nodes}
+                activeId={activeId}
+                collapsed={collapsed}
+                setCollapsed={setCollapsed}
+                setActiveId={setActiveId}
+                setLinkSource={setLinkSource}
+                setAttrsNodeId={setAttrsNodeId}
+                onCopyId={onCopyId}
+                onReparent={(target, newParent) => {
+                  setError(null);
+                  void (async () => {
+                    try {
+                      await invoke<string>("move_node", {
+                        target,
+                        newPosition: 0,
+                        newParent,
+                      });
+                      await refresh();
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  })();
+                }}
+                onDeleteNode={onDeleteNode}
+                dragOverId={dragOverId}
+                setDragOverId={setDragOverId}
+              />
                 </>
               )}
 
@@ -904,6 +923,8 @@ export default function App() {
         onClose={() => {
           setDiffRev(null);
         }}
+        revs={revs}
+        headRevision={info?.head_revision ?? null}
       />
 
       <SettingsPanel
@@ -929,6 +950,35 @@ export default function App() {
         open={branchOpen}
         onOpenChange={setBranchOpen}
         onChanged={() => {
+          void refresh();
+        }}
+      />
+
+      <LinkDialog
+        open={linkSource !== null}
+        onOpenChange={(o) => {
+          if (!o) setLinkSource(null);
+        }}
+        source={linkSource}
+        nodes={nodes}
+        relations={relations}
+        onChanged={() => {
+          void refresh();
+        }}
+      />
+
+      <AttributesDialog
+        open={attrsNodeId !== null}
+        onOpenChange={(o) => {
+          if (!o) setAttrsNodeId(null);
+        }}
+        nodeId={attrsNodeId}
+        initial={
+          (attrsNodeId &&
+            nodes.find((n) => n.id === attrsNodeId)?.attributes) ||
+          {}
+        }
+        onSaved={() => {
           void refresh();
         }}
       />
