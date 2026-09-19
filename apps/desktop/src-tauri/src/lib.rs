@@ -4,7 +4,7 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
-    ChangeType, Document, Manifest, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
+    ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
     Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
     save_package,
     validator::{ValidationCategory, validate as core_validate},
@@ -1341,7 +1341,7 @@ mod tests {
         seed_initial_revision(&mut store, "doc-z").expect("rev");
         let head = current_head(&store, "doc-z").expect("head");
         assert_eq!(head, "R000");
-        let manifest = Manifest::new("doc-z", "My Title", "R000");
+        let manifest = aidoc::Manifest::new("doc-z", "My Title", "R000");
         assert_eq!(manifest.document.title, "My Title");
         assert_eq!(manifest.document.id, "doc-z");
         assert_eq!(manifest.revision.current, "R000");

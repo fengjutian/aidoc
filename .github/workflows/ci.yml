@@ -45,14 +45,20 @@ jobs:
       - name: cargo test --workspace
         run: cargo test --workspace
 
+      - name: cargo test desktop (Tauri command coverage)
+        run: cargo test -p aidoc-desktop
+
       - name: cargo build aidoc-cli (release)
         run: cargo build -p aidoc-cli --release
 
       - name: cargo build aidoc-mcp (release)
         run: cargo build -p aidoc-mcp --release
 
+      - name: cargo build aidoc-desktop (compile check)
+        run: cargo check -p aidoc-desktop
+
   ui:
-    name: vite build (ui)
+    name: vite build + tests (ui)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,15 +67,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: apps/desktop/ui/package-lock.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('apps/desktop/ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
+        working-directory: apps/desktop/ui
+
+      - name: TypeScript type-check
+        run: pnpm exec tsc -b --noEmit
+        working-directory: apps/desktop/ui
+
+      - name: Unit tests (node --test)
+        run: pnpm test
         working-directory: apps/desktop/ui
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
         working-directory: apps/desktop/ui
 
   integration-smoke:
