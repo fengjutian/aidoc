@@ -99,7 +99,7 @@ pub fn apply_with_registry(
             .as_ref()
             .and_then(|p| p.attributes.get("branch").cloned())
             .or_else(|| op.reason.clone()),
-        _ => None,
+        _ => crud::head_branch(store.conn(), doc_id).map_err(ApplyError::Store)?,
     };
 
     // 3. Apply inside a single SQLite transaction.

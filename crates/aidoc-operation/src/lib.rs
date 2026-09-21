@@ -10,12 +10,14 @@
 //! forward-looking ops.
 
 pub mod apply;
+pub mod branching;
 pub mod check;
 pub mod conflict;
 pub mod engine;
 pub mod handler;
 
 pub use apply::{ApplyError, ApplyOutcome, apply_operation, apply_with_registry};
+pub use branching::{BranchError, branch_head, checkout_branch, merge_branch};
 pub use check::{CheckError, check_all, check_conflict, check_revision};
 pub use conflict::{Conflict, ConflictKind};
 pub use engine::{OperationError, OperationResult};

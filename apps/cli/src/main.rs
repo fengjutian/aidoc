@@ -157,13 +157,13 @@ enum Cmd {
         reason: Option<String>,
     },
 
-    /// Merge a named branch back into main (spec §35, simplified).
-    ///
-    /// `aidoc merge path/to/doc.aidoc ai-draft`
-    /// produces a new revision whose `expected_revision` is the current main
-    /// head and whose branch carries the merged branch label. v0.1 does not
-    /// attempt automatic conflict resolution — both branches are expected to
-    /// have touched disjoint nodes.
+    /// Switch to the tip of main or a named branch.
+    Checkout {
+        path: String,
+        branch: String,
+    },
+
+    /// Three-way merge a named branch into the checked-out main branch.
     Merge {
         path: String,
         /// Source branch to merge.
@@ -218,6 +218,7 @@ fn main() -> Result<()> {
         Cmd::Branch { path, name, reason } => {
             commands::branch::run(&path, &name, reason.as_deref())
         }
+        Cmd::Checkout { path, branch } => commands::checkout::run(&path, &branch),
         Cmd::Merge {
             path,
             branch,

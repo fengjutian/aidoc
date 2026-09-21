@@ -14,6 +14,7 @@ pub use aidoc_operation::{
     ApplyContext, ApplyError, ApplyOutcome, Conflict, ConflictKind, HandlerRegistry,
     OperationError, OperationHandler, apply_operation, apply_with_registry,
 };
+pub use aidoc_operation::{BranchError, branch_head, checkout_branch, merge_branch};
 pub use aidoc_package as package;
 pub use aidoc_package::{
     Manifest, Package, PackageError, create_package, open_package, save_package,

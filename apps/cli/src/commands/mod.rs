@@ -1,5 +1,6 @@
 pub mod apply;
 pub mod branch;
+pub mod checkout;
 pub mod demo;
 pub mod diff;
 pub mod example;
