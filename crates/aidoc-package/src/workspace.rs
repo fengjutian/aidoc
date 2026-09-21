@@ -331,4 +331,30 @@ mod asset_tests {
         );
         assert_eq!(pkg.manifest.entry, "document/document.json");
     }
+
+    #[test]
+    fn save_synchronizes_live_nodes_into_canonical_json() {
+        use aidoc_storage::{AnyhowErr, crud};
+
+        let dir = tempfile::tempdir().unwrap();
+        let (mut pkg, mut store) = create_package(dir.path().join("x.aidoc"), "x", "X").unwrap();
+        let doc = Document::new("x", "X", "root");
+        crud::upsert_document(store.conn(), &doc).unwrap();
+        let mut root = Node::new("root", NodeKind::Section);
+        root.content = "AI-readable content".into();
+        store
+            .tx::<_, _, AnyhowErr>(|tx| {
+                crud::insert_node(tx, "x", &root)?;
+                Ok(())
+            })
+            .unwrap();
+
+        save_package(&mut pkg, &store).unwrap();
+        let value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(pkg.workspace_path().join("document/document.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["nodes"][0]["id"], "root");
+        assert_eq!(value["nodes"][0]["content"], "AI-readable content");
+    }
 }
