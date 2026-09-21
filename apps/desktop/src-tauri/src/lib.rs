@@ -1453,11 +1453,17 @@ fn read_info(store: &Store, package: &aidoc::Package) -> InfoDto {
         .ok()
         .flatten()
         .unwrap_or_else(|| "R000".to_string());
+    let root_node = crud::get_document(store.conn(), &package.manifest.document.id)
+        .ok()
+        .flatten()
+        .map(|doc| doc.root_node.as_str().to_owned())
+        .unwrap_or_else(|| "root".to_owned());
     InfoDto {
         doc_id: package.manifest.document.id.clone(),
         title: package.manifest.document.title.clone(),
         head_revision: head,
-        entry: package.manifest.entry.clone(),
+        // The UI needs a node id, not the package's canonical entry path.
+        entry: root_node,
         source_path: package.source_path.display().to_string(),
     }
 }

@@ -1,5 +1,9 @@
 # AIDoc
 
+> Current portable format: [AIDoc v0.2](./docs/AIDoc%20v0.2%20Format%20Specification.md).
+> `document/document.json` is the canonical AI/tool interchange entry; HTML
+> is a derived representation and SQLite is an editor implementation detail.
+
 AI-native structured document format — implementation of the
 [AIDoc v0.1 Format Specification](./docs/AIDoc%20v0.1%20Format%20Specification.md).
 

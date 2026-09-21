@@ -1,4 +1,5 @@
-//! AIDoc package: ZIP container with manifest + HTML + SQLite.
+//! AIDoc package: ZIP container with canonical JSON, schemas, derived HTML,
+//! assets, and an optional SQLite implementation store.
 
 pub mod manifest;
 pub mod workspace;

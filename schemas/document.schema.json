@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aidoc.dev/schema/0.2/document.schema.json",
+  "title": "AIDoc canonical document",
+  "type": "object",
+  "required": ["format", "format_version", "document", "nodes", "relations"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": "aidoc" },
+    "format_version": { "const": "0.2" },
+    "document": {
+      "type": "object",
+      "required": ["id", "title", "root_node"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "root_node": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "current_revision": { "type": ["string", "null"] },
+    "branch": { "type": ["string", "null"] },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "position", "content"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "parent": { "type": ["string", "null"] },
+        "position": { "type": "integer", "minimum": 0 },
+        "semantic_type": { "type": ["string", "null"] },
+        "content": { "type": "string" },
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "relation": {
+      "type": "object",
+      "required": ["id", "source", "target", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "custom_kind": { "type": ["string", "null"] },
+        "attributes": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

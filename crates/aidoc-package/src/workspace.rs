@@ -3,7 +3,8 @@
 //! Layout:
 //!   <tmpdir>/
 //!     manifest.json
-//!     document/document.html
+//!     document/document.json  (canonical, portable representation)
+//!     document/document.html  (derived human-readable representation)
 //!     .internal/document.db
 //!     assets/        (mirrored as-is)
 
@@ -11,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use aidoc_model::{Node, NodeKind};
+use aidoc_model::{Document, Node, NodeKind, Relation};
 use aidoc_storage::Store;
 
 use crate::manifest::Manifest;
@@ -33,6 +34,74 @@ pub enum PackageError {
 
     #[error("invalid manifest: {0}")]
     InvalidManifest(String),
+}
+
+#[derive(Debug, serde::Serialize)]
+struct CanonicalDocument<'a> {
+    #[serde(rename = "$schema")]
+    schema: &'static str,
+    format: &'static str,
+    format_version: &'static str,
+    document: &'a Document,
+    current_revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
+    nodes: &'a [Node],
+    relations: &'a [Relation],
+}
+
+const DOCUMENT_SCHEMA: &str = include_str!("../../../schemas/document.schema.json");
+const OPERATION_SCHEMA: &str = include_str!("../../../schemas/operation.schema.json");
+
+fn write_schema_bundle(root: &Path) -> Result<(), PackageError> {
+    let dir = root.join("schemas");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("document.schema.json"), DOCUMENT_SCHEMA)?;
+    std::fs::write(dir.join("operation.schema.json"), OPERATION_SCHEMA)?;
+    Ok(())
+}
+
+fn write_canonical_document(root: &Path, store: &Store, doc_id: &str) -> Result<(), PackageError> {
+    let document = aidoc_storage::crud::get_document(store.conn(), doc_id)?
+        .ok_or_else(|| PackageError::InvalidManifest(format!("document not found: {doc_id}")))?;
+    let nodes = aidoc_storage::crud::list_nodes(store.conn(), doc_id)?;
+    let relations = aidoc_storage::crud::list_relations(store.conn(), doc_id)?;
+    let current_revision = aidoc_storage::crud::head_revision(store.conn(), doc_id)?;
+    let branch = aidoc_storage::crud::head_branch(store.conn(), doc_id)?;
+    let value = CanonicalDocument {
+        schema: "../schemas/document.schema.json",
+        format: "aidoc",
+        format_version: "0.2",
+        document: &document,
+        current_revision,
+        branch,
+        nodes: &nodes,
+        relations: &relations,
+    };
+    std::fs::write(
+        root.join("document/document.json"),
+        serde_json::to_string_pretty(&value)?,
+    )?;
+    Ok(())
+}
+
+fn write_initial_canonical(root: &Path, doc_id: String, title: String) -> Result<(), PackageError> {
+    let document = Document::new(doc_id, title, "root");
+    let value = CanonicalDocument {
+        schema: "../schemas/document.schema.json",
+        format: "aidoc",
+        format_version: "0.2",
+        document: &document,
+        current_revision: Some("R000".into()),
+        branch: None,
+        nodes: &[],
+        relations: &[],
+    };
+    std::fs::write(
+        root.join("document/document.json"),
+        serde_json::to_string_pretty(&value)?,
+    )?;
+    Ok(())
 }
 
 /// Open a `.aidoc` file into a temporary workspace + a connected Store.
@@ -73,12 +142,16 @@ pub fn create_package(
     title: impl Into<String> + Clone,
 ) -> Result<(Package, Store), PackageError> {
     let temp = tempdir()?;
-    let manifest = Manifest::new(doc_id.clone(), title.clone(), "R000");
+    let doc_id_string: String = doc_id.clone().into();
+    let title_string: String = title.clone().into();
+    let manifest = Manifest::new(doc_id_string.clone(), title_string.clone(), "R000");
 
     // Create dirs.
     std::fs::create_dir_all(temp.path().join("document"))?;
     std::fs::create_dir_all(temp.path().join(".internal"))?;
     std::fs::create_dir_all(temp.path().join("assets"))?;
+    write_schema_bundle(temp.path())?;
+    write_initial_canonical(temp.path(), doc_id_string, title_string.clone())?;
 
     // Write manifest.
     std::fs::write(
@@ -87,10 +160,9 @@ pub fn create_package(
     )?;
 
     // Write empty HTML.
-    let title_str: String = title.into();
     std::fs::write(
         temp.path().join("document/document.html"),
-        minimal_html(&title_str),
+        minimal_html(&title_string),
     )?;
 
     // Open an empty SQLite db.
@@ -119,6 +191,8 @@ pub fn save_package(pkg: &mut Package, store: &Store) -> Result<(), PackageError
         pkg.workspace.path().join("manifest.json"),
         serde_json::to_string_pretty(&pkg.manifest)?,
     )?;
+    write_schema_bundle(pkg.workspace.path())?;
+    write_canonical_document(pkg.workspace.path(), store, &pkg.manifest.document.id)?;
     zip_io::pack_zip(pkg.workspace.path(), &pkg.source_path)?;
     Ok(())
 }

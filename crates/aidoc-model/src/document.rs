@@ -14,7 +14,7 @@ pub struct Document {
 }
 
 fn default_version() -> String {
-    "0.1".into()
+    "0.2".into()
 }
 
 impl Document {

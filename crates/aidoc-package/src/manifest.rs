@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
@@ -13,6 +14,16 @@ pub struct Manifest {
     pub revision: ManifestRevision,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Machine-readable schemas shipped inside the package. Added in v0.2;
+    /// defaults keep v0.1 packages readable.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub schemas: BTreeMap<String, String>,
+    /// Alternative, derived representations. The canonical entry remains JSON.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub representations: BTreeMap<String, String>,
+    /// Feature negotiation for agents and generic consumers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -42,12 +53,12 @@ impl Manifest {
         let now = Utc::now();
         Self {
             format: "aidoc".into(),
-            version: "0.1".into(),
+            version: "0.2".into(),
             document: ManifestDocument {
                 id: doc_id.into(),
                 title: title.into(),
             },
-            entry: "document/document.html".into(),
+            entry: "document/document.json".into(),
             storage: ManifestStorage {
                 kind: "sqlite".into(),
                 path: ".internal/document.db".into(),
@@ -57,6 +68,18 @@ impl Manifest {
             },
             created_at: now,
             updated_at: now,
+            schemas: BTreeMap::from([
+                ("document".into(), "schemas/document.schema.json".into()),
+                ("operation".into(), "schemas/operation.schema.json".into()),
+            ]),
+            representations: BTreeMap::from([("html".into(), "document/document.html".into())]),
+            capabilities: vec![
+                "nodes".into(),
+                "relations".into(),
+                "operations".into(),
+                "revisions".into(),
+                "extensions".into(),
+            ],
         }
     }
 
