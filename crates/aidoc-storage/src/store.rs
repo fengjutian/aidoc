@@ -102,6 +102,13 @@ impl Store {
         &self.conn
     }
 
+    /// Mutable borrow of the raw connection. Reserved for callers that need
+    /// explicit savepoint control (e.g. dry-run / preview paths that want to
+    /// commit or roll back manually). Prefer [`Store::tx`] for ordinary work.
+    pub fn conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+
     /// Run a closure inside a transaction. Roll back on `Err`.
     ///
     /// The closure may return *any* error; we surface it as

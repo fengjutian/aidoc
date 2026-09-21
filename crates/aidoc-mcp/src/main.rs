@@ -13,7 +13,8 @@ use std::sync::{Arc, Mutex};
 
 use aidoc::{
     Document, Node, NodeId, OpId, Operation, OperationType, Patch, Provenance, Revision,
-    RevisionId, apply_operation, create_package, open_package, revert_to, save_package,
+    RevisionId, apply_operation, create_package, open_package, preview_operation, revert_to,
+    save_package,
 };
 use aidoc_storage::{Store, crud};
 
@@ -63,6 +64,112 @@ struct InitResult {
     title: String,
     head_revision: String,
     path: String,
+}
+
+/// One node-level entry in a [`PreviewReportDto`].
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum NodeDiffDto {
+    Added { node: NodeDto },
+    Removed { node: NodeDto },
+    Modified { before: NodeDto, after: NodeDto },
+}
+
+/// One relation-level entry in a [`PreviewReportDto`].
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum RelationDiffDto {
+    Added {
+        relation_id: String,
+        source: String,
+        target: String,
+        kind: String,
+    },
+    Removed {
+        relation_id: String,
+        source: String,
+        target: String,
+        kind: String,
+    },
+}
+
+/// Wire-format preview report. Mirrors [`aidoc::PreviewReport`] but flattens
+/// the node / relation shapes into MCP-friendly DTOs.
+#[derive(Debug, Serialize)]
+struct PreviewReportDto {
+    current_revision: String,
+    next_revision: String,
+    summary: String,
+    nodes: Vec<(String, NodeDiffDto)>,
+    relations: Vec<(String, RelationDiffDto)>,
+}
+
+impl From<aidoc::PreviewReport> for PreviewReportDto {
+    fn from(r: aidoc::PreviewReport) -> Self {
+        let nodes = r
+            .nodes
+            .into_iter()
+            .map(|(id, diff)| {
+                let dto = match diff {
+                    aidoc::NodeDiff::Added { node } => {
+                        NodeDiffDto::Added { node: NodeDto::from(node) }
+                    }
+                    aidoc::NodeDiff::Removed { node } => {
+                        NodeDiffDto::Removed { node: NodeDto::from(node) }
+                    }
+                    aidoc::NodeDiff::Modified { before, after } => NodeDiffDto::Modified {
+                        before: NodeDto::from(before),
+                        after: NodeDto::from(after),
+                    },
+                    aidoc::NodeDiff::Unchanged => unreachable!("diff engine skips unchanged nodes"),
+                };
+                (id.as_str().to_owned(), dto)
+            })
+            .collect();
+        let relations = r
+            .relations
+            .into_iter()
+            .map(|(id, diff)| {
+                let dto = match diff {
+                    aidoc::RelationDiff::Added { relation } => RelationDiffDto::Added {
+                        relation_id: relation.id.clone(),
+                        source: relation.source.as_str().to_owned(),
+                        target: relation.target.as_str().to_owned(),
+                        kind: relation.kind.as_str().to_owned(),
+                    },
+                    aidoc::RelationDiff::Removed { relation } => RelationDiffDto::Removed {
+                        relation_id: relation.id.clone(),
+                        source: relation.source.as_str().to_owned(),
+                        target: relation.target.as_str().to_owned(),
+                        kind: relation.kind.as_str().to_owned(),
+                    },
+                };
+                (id, dto)
+            })
+            .collect();
+        Self {
+            current_revision: r.current_revision.as_str().to_owned(),
+            next_revision: r.next_revision.as_str().to_owned(),
+            summary: r.summary,
+            nodes,
+            relations,
+        }
+    }
+}
+
+impl From<Node> for NodeDto {
+    fn from(n: Node) -> Self {
+        Self {
+            id: n.id.as_str().to_owned(),
+            kind: serde_json::to_value(n.kind)
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_owned()))
+                .unwrap_or_else(|| "generic".into()),
+            parent: n.parent.map(|p| p.as_str().to_owned()),
+            position: n.position,
+            content: n.content,
+        }
+    }
 }
 
 trait IntoStrErr<T> {
@@ -198,6 +305,24 @@ async fn apply_operation_tool(
         let out = apply_operation(&mut s.store, doc_id, op).str_err()?;
         s.package.manifest.set_revision(out.revision.as_str());
         Ok(rev_to_dto(&out.revision, &out.op_id))
+    })
+}
+
+/// `preview_operation` — runs the same handler `apply_operation` uses, but
+/// inside a SQLite savepoint that is rolled back before returning. Returns a
+/// structured [`PreviewReportDto`] (per-node + per-relation diff + the
+/// revision the op *would* create) so a UI layer can let the user accept /
+/// reject individual changes before persisting.
+async fn preview_operation_tool(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<PreviewReportDto, String> {
+    let op_json = need::<serde_json::Value>(&args, "op_json")?;
+    let op: Operation = serde_json::from_value(op_json).str_err()?;
+    let _doc_id = current_doc_id(&state)?;
+    with_doc(&state, |s, doc_id| {
+        let report = preview_operation(&mut s.store, doc_id, &op).str_err()?;
+        Ok(PreviewReportDto::from(report))
     })
 }
 
@@ -474,6 +599,16 @@ impl AIDocServer {
             }),
         );
         tools.insert(
+            "preview_operation".into(),
+            tool_entry(
+                "Dry-run an Operation JSON. Reports the per-node / per-relation \
+                 diff and the revision the op would create, without mutating \
+                 the document. Pair with apply_operation after the user accepts \
+                 the changes.",
+                |s, a| preview_operation_tool(s, a),
+            ),
+        );
+        tools.insert(
             "history".into(),
             tool_entry("List revision history.", |s, a| history(s, a)),
         );
@@ -575,6 +710,30 @@ fn tool_input_schema(name: &str) -> std::sync::Arc<serde_json::Map<String, serde
                 "op_json": {
                     "type":"object",
                     "description":"AIDoc v0.2 atomic operation (schemas/operation.schema.json)",
+                    "required":["id", "type", "expected_revision", "actor"],
+                    "properties": {
+                        "id":{"type":"string"},
+                        "type":{"enum":["create","update","delete","move","rename","replace","link","unlink","split","merge","revert","branch"]},
+                        "target":{"type":["string","null"]},
+                        "expected_revision":{"type":"string"},
+                        "expected_hash":{"type":["string","null"]},
+                        "target_revision":{"type":["string","null"]},
+                        "targets":{"type":"array", "items":{"type":"string"}},
+                        "actor":{"type":"object"},
+                        "patch":{"type":["object","null"]},
+                        "reason":{"type":["string","null"]}
+                    }
+                }
+            }).as_object().unwrap().clone(),
+            vec!["op_json"],
+        ),
+        "preview_operation" => (
+            // Same shape as apply_operation — the caller passes a v0.2 op
+            // JSON; the tool runs it inside a savepoint and returns the diff.
+            json!({
+                "op_json": {
+                    "type":"object",
+                    "description":"AIDoc v0.2 atomic operation (schemas/operation.schema.json) — dry-run only, the store is not mutated.",
                     "required":["id", "type", "expected_revision", "actor"],
                     "properties": {
                         "id":{"type":"string"},

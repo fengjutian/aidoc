@@ -12,7 +12,8 @@ pub use aidoc_model::*;
 pub use aidoc_operation as operation;
 pub use aidoc_operation::{
     ApplyContext, ApplyError, ApplyOutcome, Conflict, ConflictKind, HandlerRegistry,
-    OperationError, OperationHandler, apply_operation, apply_with_registry,
+    NodeDiff, OperationError, OperationHandler, PreviewReport, RelationDiff, apply_operation,
+    apply_with_registry, preview_operation, preview_with_registry,
 };
 pub use aidoc_operation::{BranchError, branch_head, checkout_branch, merge_branch};
 pub use aidoc_package as package;

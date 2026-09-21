@@ -15,6 +15,7 @@ pub mod check;
 pub mod conflict;
 pub mod engine;
 pub mod handler;
+pub mod preview;
 
 pub use apply::{ApplyError, ApplyOutcome, apply_operation, apply_with_registry};
 pub use branching::{BranchError, branch_head, checkout_branch, merge_branch};
@@ -22,3 +23,4 @@ pub use check::{CheckError, check_all, check_conflict, check_revision};
 pub use conflict::{Conflict, ConflictKind};
 pub use engine::{OperationError, OperationResult};
 pub use handler::{ApplyContext, HandlerRegistry, OperationHandler};
+pub use preview::{NodeDiff, PreviewReport, RelationDiff, preview_operation, preview_with_registry};

@@ -16,6 +16,6 @@ pub use document::Document;
 pub use id::{AIDocError, NodeId, OpId, Result, RevisionId};
 pub use node::{Node, NodeKind};
 pub use operation::{Operation, OperationType, Patch};
-pub use provenance::Provenance;
+pub use provenance::{Actor, ActorKind, Provenance};
 pub use relation::{Relation, RelationKind};
 pub use revision::{Change, ChangeType, HashRef, Revision};
