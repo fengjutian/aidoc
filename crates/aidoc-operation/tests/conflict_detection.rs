@@ -277,6 +277,28 @@ fn relation_conflict_on_duplicate_link_and_absent_unlink() {
 }
 
 #[test]
+fn link_operation_preserves_kind_and_relation_attributes() {
+    let mut store = setup();
+    let h = head(&store);
+    apply_operation(&mut store, doc_id(), create_op("OP-101", "a", &h, "A")).unwrap();
+    let h = head(&store);
+    apply_operation(&mut store, doc_id(), create_op("OP-102", "b", &h, "B")).unwrap();
+    let h = head(&store);
+    let mut op = link_op("OP-103", OperationType::Link, "a", "b", &h);
+    let mut patch = Patch::default();
+    patch.attributes.insert("relation_kind".into(), "depends-on".into());
+    patch.attributes.insert("confidence".into(), "0.92".into());
+    op.patch = Some(patch);
+    apply_operation(&mut store, doc_id(), op).unwrap();
+
+    let relations = crud::list_relations(store.conn(), doc_id()).unwrap();
+    assert_eq!(relations.len(), 1);
+    assert_eq!(relations[0].kind.as_str(), "depends-on");
+    assert_eq!(relations[0].attributes.get("confidence").map(String::as_str), Some("0.92"));
+    assert!(!relations[0].attributes.contains_key("relation_kind"));
+}
+
+#[test]
 fn structure_conflict_on_move_cycle() {
     let mut store = setup();
     // Seed a hierarchy directly: root → parent → child.
