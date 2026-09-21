@@ -628,6 +628,65 @@ fn save_doc_as(state: tauri::State<'_, AppState>, path: String) -> Result<(), St
     Ok(())
 }
 
+/// Create a new `.aidoc` package on disk from a v0.2 canonical JSON file and
+/// open it. The JSON's `id` and `title` become the document's. The import is
+/// validated against `document.schema.json` and unknown node kinds are mapped
+/// to `Generic` + `semantic_type` so extension types round-trip losslessly.
+#[tauri::command]
+fn import_doc_json(
+    state: tauri::State<'_, AppState>,
+    out_path: String,
+    json_path: String,
+) -> Result<InfoDto, String> {
+    if state
+        .inner
+        .lock()
+        .unwrap()
+        .sessions
+        .iter()
+        .any(|s| same_path(&s.package.source_path, std::path::Path::new(&out_path)))
+    {
+        return Err("document is already open at this path".into());
+    }
+    // Peek the JSON first so we can seed the package with the correct
+    // doc_id/title. The schema check still runs inside the import function.
+    let raw = std::fs::read_to_string(&json_path).map_err(err)?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(err)?;
+    let doc_id = parsed
+        .get("document")
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| err("canonical JSON is missing document.id"))?
+        .to_string();
+    let title = parsed
+        .get("document")
+        .and_then(|d| d.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(&doc_id)
+        .to_string();
+
+    let (package, mut store) =
+        create_package(PathBuf::from(&out_path), &doc_id, &title).map_err(err)?;
+    // Seed an initial revision so the import can find a parent head.
+    seed_root(&mut store, &doc_id, &title).map_err(err)?;
+    seed_initial_revision(&mut store, &doc_id).map_err(err)?;
+    aidoc::import_canonical_document(&package, &mut store, &json_path)
+        .map_err(|e| err(format!("import: {e}")))?;
+
+    // Persist to disk so the .aidoc on disk matches the in-memory state.
+    let mut package = package;
+    save_package(&mut package, &store).map_err(err)?;
+
+    let info = read_info(&store, &package);
+    state
+        .inner
+        .lock()
+        .unwrap()
+        .sessions
+        .push(SessionHandle { store, package });
+    Ok(info)
+}
+
 #[tauri::command]
 fn import_image_asset(
     state: tauri::State<'_, AppState>,
@@ -1522,6 +1581,7 @@ pub fn run() {
             open_doc,
             save_doc,
             save_doc_as,
+            import_doc_json,
             import_image_asset,
             resolve_image_asset,
             open_code_ref,

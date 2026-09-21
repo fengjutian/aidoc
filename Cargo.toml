@@ -37,6 +37,7 @@ indexmap = { version = "1.9", features = ["serde"] }
 toml = "0.8"
 walkdir = "2.5"
 schemars = { version = "0.8", features = ["indexmap"] }
+jsonschema = { version = "0.56", default-features = false }
 
 [profile.dev]
 opt-level = 0

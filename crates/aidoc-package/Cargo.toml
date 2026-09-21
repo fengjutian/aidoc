@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 aidoc-model = { path = "../aidoc-model" }
 aidoc-storage = { path = "../aidoc-storage" }
+aidoc-validator = { path = "../aidoc-validator" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -15,3 +16,5 @@ zip = { workspace = true }
 chrono = { workspace = true }
 walkdir = { workspace = true }
 tempfile = "3.13"
+rusqlite = { workspace = true }
+indexmap = { workspace = true }

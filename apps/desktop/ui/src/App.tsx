@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertCircle,
   Clock,
@@ -455,6 +456,49 @@ export default function App() {
     }
   };
 
+  const onImportJson = async () => {
+    setError(null);
+    // Pick the canonical document.json first.
+    const jsonPath = await openDialog({
+      multiple: false,
+      filters: [
+        { name: "AIDoc canonical JSON", extensions: ["json"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (!jsonPath || Array.isArray(jsonPath)) return;
+    // Peek the JSON so we can suggest a sensible .aidoc filename.
+    let suggested = "imported.aidoc";
+    try {
+      const text = await readTextFile(jsonPath as string);
+      const parsed = JSON.parse(text);
+      const id = parsed?.document?.id;
+      if (typeof id === "string" && id.length > 0) {
+        suggested = `${id}.aidoc`;
+      }
+    } catch {
+      // Leave the suggested name; the backend will surface a clear error.
+    }
+    const outPath = await saveDialog({
+      defaultPath: suggested,
+      filters: [{ name: "AIDoc package", extensions: ["aidoc"] }],
+    });
+    if (!outPath) return;
+    try {
+      const i = await invoke<Info>("import_doc_json", {
+        outPath,
+        jsonPath,
+      });
+      refreshEpoch.current += 1;
+      setInfo(i);
+      setTabs(await invoke<Info[]>("list_documents"));
+      setDocPath(outPath);
+      addOpened(outPath);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const onUpdate = async (target: string, html: string) => {
     try {
       await invoke<string>("update_node", { target, content: html });
@@ -735,6 +779,10 @@ export default function App() {
               {t("welcome.openFile")}
             </Button>
           </div>
+          <Button onClick={onImportJson} variant="ghost" className="w-full">
+            <Download className="mr-2 h-4 w-4" />
+            {t("welcome.importJson")}
+          </Button>
         </div>
         {error && (
           <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

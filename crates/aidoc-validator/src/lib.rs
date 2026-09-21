@@ -8,6 +8,7 @@ pub mod code_ref;
 pub mod identity;
 pub mod relation;
 pub mod revision;
+pub mod schema;
 pub mod staleness;
 pub mod structure;
 
@@ -15,6 +16,7 @@ use thiserror::Error;
 
 use aidoc_storage::Store;
 
+pub use schema::{SchemaError, SchemaValidator, validate_document_value, validate_operation_value};
 pub use staleness::{CodeState, GitCliResolver, GitResolver, Staleness, classify};
 
 #[derive(Debug, Error)]

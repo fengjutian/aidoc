@@ -17,8 +17,8 @@ pub use aidoc_operation::{
 pub use aidoc_operation::{BranchError, branch_head, checkout_branch, merge_branch};
 pub use aidoc_package as package;
 pub use aidoc_package::{
-    Manifest, Package, PackageError, create_package, inline_image_assets, open_package,
-    save_package,
+    ImportError, Manifest, Package, PackageError, create_package, import_canonical_document,
+    import_canonical_document_value, inline_image_assets, open_package, save_package,
 };
 pub use aidoc_renderer as renderer;
 pub use aidoc_storage as storage;
