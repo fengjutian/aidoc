@@ -1013,13 +1013,11 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
     let doc_id = s.package.manifest.document.id.clone();
     let revs = crud::list_revisions(s.store.conn(), &doc_id).map_err(err)?;
     let mut named: HashMap<String, (Option<String>, usize)> = HashMap::new();
-    let mut main_head: Option<String> = None;
     let mut main_count = 0usize;
     for r in &revs {
         match &r.branch {
             None => {
                 main_count += 1;
-                main_head = Some(r.id.as_str().to_owned());
             }
             Some(name) => {
                 let entry = named.entry(name.clone()).or_insert((None, 0));
@@ -1028,7 +1026,7 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
             }
         }
     }
-    main_head = aidoc::branch_head(&s.store, &doc_id, "main").ok();
+    let main_head = aidoc::branch_head(&s.store, &doc_id, "main").ok();
     let mut out = vec![BranchDto {
         name: "main".into(),
         head: main_head,

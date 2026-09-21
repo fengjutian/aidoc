@@ -42,14 +42,29 @@ pub fn branch_head(store: &Store, doc_id: &str, name: &str) -> Result<String, Br
 }
 
 fn snapshot(store: &Store, doc_id: &str, rev: &str) -> Result<Vec<Node>, BranchError> {
-    crud::load_snapshot(store.conn(), doc_id, rev)?
-        .ok_or_else(|| BranchError::MissingSnapshot(rev.into()))
+    if let Some(nodes) = crud::load_snapshot(store.conn(), doc_id, rev)? { return Ok(nodes); }
+    // Older packages did not snapshot R000. A direct Branch child is an
+    // identical node state, so its snapshot safely reconstructs the seed.
+    if rev == "R000" {
+        use rusqlite::OptionalExtension;
+        let child: Option<String> = store.conn().query_row(
+            "SELECT r.id FROM revisions r JOIN operations o ON o.doc_id=r.doc_id AND o.id=r.operation WHERE r.doc_id=?1 AND r.parent=?2 AND o.op_type='branch' ORDER BY CAST(SUBSTR(r.id,2) AS INTEGER) LIMIT 1",
+            rusqlite::params![doc_id, rev], |r| r.get(0),
+        ).optional()?;
+        if let Some(child) = child {
+            if let Some(nodes) = crud::load_snapshot(store.conn(), doc_id, &child)? { return Ok(nodes); }
+        }
+    }
+    Err(BranchError::MissingSnapshot(rev.into()))
 }
 
 /// Switch the live node view and head to an existing branch tip. This does
 /// not create a revision; the next edit descends from that tip.
 pub fn checkout_branch(store: &mut Store, doc_id: &str, name: &str) -> Result<String, BranchError> {
     let tip = branch_head(store, doc_id, name)?;
+    if crud::head_revision(store.conn(), doc_id)?.as_deref() == Some(tip.as_str()) {
+        return Ok(tip);
+    }
     let nodes = snapshot(store, doc_id, &tip)?;
     store.tx(|tx| {
         tx.execute("DELETE FROM nodes WHERE doc_id=?1", [doc_id])?;
