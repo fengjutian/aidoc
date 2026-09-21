@@ -24,7 +24,11 @@
         "kind": { "type": "string" },
         "semantic_type": { "type": "string" },
         "position": { "type": "integer", "minimum": 0 },
-        "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+        "attributes": {
+          "type": "object",
+          "description": "String metadata. For link operations, relation_kind selects the relation type.",
+          "additionalProperties": { "type": "string" }
+        }
       },
       "additionalProperties": true
     },

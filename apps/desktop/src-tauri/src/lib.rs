@@ -124,6 +124,7 @@ struct RelationDto {
     source: String,
     target: String,
     kind: String,
+    attributes: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1232,7 +1233,11 @@ fn list_relations(state: tauri::State<'_, AppState>) -> Result<Vec<RelationDto>,
             id: r.id,
             source: r.source.as_str().to_owned(),
             target: r.target.as_str().to_owned(),
-            kind: r.kind.as_str().to_owned(),
+            kind: r
+                .custom_kind
+                .clone()
+                .unwrap_or_else(|| r.kind.as_str().to_owned()),
+            attributes: r.attributes.into_iter().collect(),
         })
         .collect())
 }

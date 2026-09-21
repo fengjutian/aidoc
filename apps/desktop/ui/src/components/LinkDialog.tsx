@@ -26,6 +26,7 @@ interface RelationRow {
   source: string;
   target: string;
   kind: string;
+  attributes?: Record<string, string>;
 }
 
 interface LinkDialogProps {

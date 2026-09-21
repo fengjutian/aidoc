@@ -398,13 +398,23 @@ impl OperationHandler for LinkHandler {
             .target
             .clone()
             .ok_or(ApplyError::MissingTarget("link"))?;
+        let mut attributes = ctx
+            .op
+            .patch
+            .as_ref()
+            .map(|patch| patch.attributes.clone())
+            .unwrap_or_default();
+        let relation_kind = attributes
+            .shift_remove("relation_kind")
+            .unwrap_or_else(|| "references".into());
+        let kind = RelationKind::parse(&relation_kind);
         let rel = Relation {
             id: format!("rel-{}-{}", link_src.as_str(), link_dst.as_str()),
             source: link_src.clone(),
             target: link_dst.clone(),
-            kind: RelationKind::References,
-            custom_kind: None,
-            attributes: Default::default(),
+            kind,
+            custom_kind: (kind == RelationKind::Custom).then_some(relation_kind),
+            attributes,
         };
         ctx.insert_relation(&rel)?;
         ctx.record_change(
