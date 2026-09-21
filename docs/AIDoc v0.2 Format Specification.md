@@ -72,7 +72,10 @@ AI systems should emit operations conforming to
   "type": "update",
   "target": "introduction",
   "expected_revision": "R012",
-  "actor": { "type": "ai", "model": "example/model" },
+  "actor": {
+    "type": "operation",
+    "actor": { "type": "ai", "agent": "writer", "model": "example/model" }
+  },
   "patch": { "content": "Updated introduction." },
   "reason": "Improve clarity"
 }

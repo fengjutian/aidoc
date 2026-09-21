@@ -91,4 +91,52 @@ impl Manifest {
         self.revision.current = rev.into();
         self.touch_updated();
     }
+
+    /// Upgrade package metadata without discarding v0.1 content/history.
+    pub fn upgrade_to_v02(&mut self) {
+        self.version = "0.2".into();
+        self.entry = "document/document.json".into();
+        self.schemas
+            .insert("document".into(), "schemas/document.schema.json".into());
+        self.schemas
+            .insert("operation".into(), "schemas/operation.schema.json".into());
+        self.representations
+            .insert("html".into(), "document/document.html".into());
+        for capability in [
+            "nodes",
+            "relations",
+            "operations",
+            "revisions",
+            "extensions",
+        ] {
+            if !self.capabilities.iter().any(|item| item == capability) {
+                self.capabilities.push(capability.into());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn v01_manifest_deserializes_and_upgrades_without_losing_identity() {
+        let raw = r#"{
+          "format":"aidoc","version":"0.1",
+          "document":{"id":"demo","title":"Demo"},
+          "entry":"document/document.html",
+          "storage":{"type":"sqlite","path":".internal/document.db"},
+          "revision":{"current":"R009"},
+          "created_at":"2026-01-01T00:00:00Z",
+          "updated_at":"2026-01-01T00:00:00Z"
+        }"#;
+        let mut manifest: Manifest = serde_json::from_str(raw).unwrap();
+        manifest.upgrade_to_v02();
+        assert_eq!(manifest.document.id, "demo");
+        assert_eq!(manifest.revision.current, "R009");
+        assert_eq!(manifest.version, "0.2");
+        assert_eq!(manifest.entry, "document/document.json");
+        assert!(manifest.schemas.contains_key("operation"));
+    }
 }

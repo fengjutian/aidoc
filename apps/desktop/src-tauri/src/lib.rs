@@ -4,12 +4,12 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
-    apply_operation, create_package, open_package, revert_to, save_package,
-    validator::{validate as core_validate, ValidationCategory},
     ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
-    Provenance, Revision, RevisionId,
+    Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
+    save_package,
+    validator::{ValidationCategory, validate as core_validate},
 };
-use aidoc_storage::{crud, Store};
+use aidoc_storage::{Store, crud};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -1595,12 +1595,16 @@ mod tests {
             resolve_code_ref(&package, "src/main.rs").unwrap(),
             source.canonicalize().unwrap()
         );
-        assert!(resolve_code_ref(&package, "../secret.txt")
-            .unwrap_err()
-            .contains("may not contain"));
-        assert!(resolve_code_ref(&package, "missing.rs")
-            .unwrap_err()
-            .contains("not found"));
+        assert!(
+            resolve_code_ref(&package, "../secret.txt")
+                .unwrap_err()
+                .contains("may not contain")
+        );
+        assert!(
+            resolve_code_ref(&package, "missing.rs")
+                .unwrap_err()
+                .contains("not found")
+        );
     }
 
     #[test]

@@ -181,6 +181,7 @@ pub fn create_package(
 
 /// Save the current workspace back to its source `.aidoc` ZIP.
 pub fn save_package(pkg: &mut Package, store: &Store) -> Result<(), PackageError> {
+    pkg.manifest.upgrade_to_v02();
     if let Some(head) = aidoc_storage::crud::head_revision(store.conn(), &pkg.manifest.document.id)?
     {
         pkg.manifest.set_revision(head);
@@ -305,5 +306,29 @@ mod asset_tests {
         inline_image_assets(&pkg, std::slice::from_mut(&mut image)).unwrap();
         assert_eq!(image.content, "data:image/png;base64,Zm9v");
         assert!(pkg.workspace_path().join("assets/p.png").exists());
+    }
+
+    #[test]
+    fn new_package_contains_portable_entry_and_embedded_schemas() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pkg, _store) = create_package(dir.path().join("x.aidoc"), "x", "X").unwrap();
+        let value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(pkg.workspace_path().join("document/document.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["format"], "aidoc");
+        assert_eq!(value["format_version"], "0.2");
+        assert_eq!(value["document"]["id"], "x");
+        assert!(
+            pkg.workspace_path()
+                .join("schemas/document.schema.json")
+                .exists()
+        );
+        assert!(
+            pkg.workspace_path()
+                .join("schemas/operation.schema.json")
+                .exists()
+        );
+        assert_eq!(pkg.manifest.entry, "document/document.json");
     }
 }

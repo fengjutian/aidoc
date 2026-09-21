@@ -548,6 +548,71 @@ where
     }
 }
 
+fn tool_input_schema(name: &str) -> std::sync::Arc<serde_json::Map<String, serde_json::Value>> {
+    use serde_json::{Map, Value, json};
+    let (properties, required): (Map<String, Value>, Vec<&str>) = match name {
+        "init_aidoc" => (
+            json!({
+                "path": {"type":"string", "description":"Destination .aidoc path"},
+                "doc_id": {"type":"string", "description":"Stable document id"},
+                "title": {"type":"string"}
+            }).as_object().unwrap().clone(),
+            vec!["path", "doc_id", "title"],
+        ),
+        "open_aidoc" => (json!({"path":{"type":"string"}}).as_object().unwrap().clone(), vec!["path"]),
+        "search_nodes" => (
+            json!({"query":{"type":"string"}, "limit":{"type":"integer", "minimum":1}}).as_object().unwrap().clone(),
+            vec!["query"],
+        ),
+        "show_node" => (json!({"node_id":{"type":"string"}}).as_object().unwrap().clone(), vec!["node_id"]),
+        "create_node" | "update_node" => (
+            json!({"target":{"type":"string", "description":"Stable node id"}, "content":{"type":"string"}}).as_object().unwrap().clone(),
+            vec!["target", "content"],
+        ),
+        "delete_node" => (json!({"target":{"type":"string"}}).as_object().unwrap().clone(), vec!["target"]),
+        "apply_operation" => (
+            json!({
+                "op_json": {
+                    "type":"object",
+                    "description":"AIDoc v0.2 atomic operation (schemas/operation.schema.json)",
+                    "required":["id", "type", "expected_revision", "actor"],
+                    "properties": {
+                        "id":{"type":"string"},
+                        "type":{"enum":["create","update","delete","move","rename","replace","link","unlink","split","merge","revert","branch"]},
+                        "target":{"type":["string","null"]},
+                        "expected_revision":{"type":"string"},
+                        "expected_hash":{"type":["string","null"]},
+                        "target_revision":{"type":["string","null"]},
+                        "targets":{"type":"array", "items":{"type":"string"}},
+                        "actor":{"type":"object"},
+                        "patch":{"type":["object","null"]},
+                        "reason":{"type":["string","null"]}
+                    }
+                }
+            }).as_object().unwrap().clone(),
+            vec!["op_json"],
+        ),
+        "history" => (json!({"branch":{"type":"string"}}).as_object().unwrap().clone(), vec![]),
+        "revert" => (json!({"target_revision":{"type":"string"}}).as_object().unwrap().clone(), vec!["target_revision"]),
+        "branch" => (
+            json!({"name":{"type":"string"}, "reason":{"type":"string"}}).as_object().unwrap().clone(),
+            vec!["name"],
+        ),
+        "merge" => (
+            json!({"branch":{"type":"string"}, "reason":{"type":"string"}}).as_object().unwrap().clone(),
+            vec!["branch"],
+        ),
+        "checkout" => (json!({"branch":{"type":"string"}}).as_object().unwrap().clone(), vec!["branch"]),
+        _ => (Map::new(), vec![]),
+    };
+    std::sync::Arc::new(
+        json!({"type":"object", "properties":properties, "required":required, "additionalProperties":false})
+            .as_object()
+            .unwrap()
+            .clone(),
+    )
+}
+
 // ---------- ServerHandler impl ----------
 
 impl ServerHandler for AIDocServer {
@@ -560,7 +625,7 @@ impl ServerHandler for AIDocServer {
             },
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             instructions: Some(
-                "AIDoc v0.1 MCP server. Initialize or open a .aidoc file first, then list / show / update / revert / export nodes."
+                "AIDoc v0.2 MCP server. Initialize or open a .aidoc file, inspect stable node ids, then make small schema-defined operations. Prefer apply_operation for typed changes; never rewrite the package database."
                     .into(),
             ),
         }
@@ -571,12 +636,11 @@ impl ServerHandler for AIDocServer {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let schema = std::sync::Arc::new(serde_json::Map::new());
         let tools = self
             .tools
             .iter()
             .map(|(name, entry)| {
-                let mut t = Tool::new(name.clone(), entry.description, schema.clone());
+                let mut t = Tool::new(name.clone(), entry.description, tool_input_schema(name));
                 t.description = Some(entry.description.into());
                 t
             })
