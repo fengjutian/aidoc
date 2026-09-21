@@ -43,6 +43,8 @@ pub fn run(path: &str, doc_id: Option<String>, title: Option<String>) -> Result<
     s.store
         .tx::<_, _, AnyhowErr>(|tx| {
             crud::insert_revision(tx, &doc_id_s, &rev, true)?;
+            let nodes = crud::list_nodes(tx, &doc_id_s)?;
+            crud::save_snapshot(tx, &doc_id_s, "R000", &nodes)?;
             Ok::<(), AnyhowErr>(())
         })
         .map_err(|e| anyhow::anyhow!("insert R000: {e}"))?;

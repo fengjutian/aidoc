@@ -1076,23 +1076,19 @@ fn merge_branch(state: tauri::State<'_, AppState>, name: String) -> Result<Strin
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
-    let head = current_head(&s.store, &doc_id)?;
-    // v0.1 merge mirrors the CLI: a Branch op whose reason records the merge.
-    let op = Operation {
-        id: OpId::new(format!("OP-merge-{}", chrono::Utc::now().timestamp_millis())),
-        op_type: OperationType::Branch,
-        target: None,
-        expected_revision: RevisionId::new(head),
-        expected_hash: None,
-        target_revision: None,
-        targets: vec![],
-        actor: Provenance::human(Some("desktop".into())),
-        patch: None,
-        reason: Some(format!("merge {name} into main")),
-    };
-    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
-    s.package.manifest.set_revision(out.revision.as_str());
-    Ok(out.revision.as_str().to_owned())
+    let revision = aidoc::merge_branch(&mut s.store, &doc_id, &name, None).map_err(err)?;
+    s.package.manifest.set_revision(revision.as_str());
+    Ok(revision.as_str().to_owned())
+}
+
+#[tauri::command]
+fn checkout_branch(state: tauri::State<'_, AppState>, name: String) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let revision = aidoc::checkout_branch(&mut s.store, &doc_id, &name).map_err(err)?;
+    s.package.manifest.set_revision(&revision);
+    Ok(revision)
 }
 
 // ---------------- helpers ----------------
@@ -1165,6 +1161,8 @@ fn seed_initial_revision(store: &mut Store, doc_id: &str) -> Result<(), String> 
     store
         .tx::<_, _, AnyhowErr>(|tx| {
             crud::insert_revision(tx, doc_id, &rev, true)?;
+            let nodes = crud::list_nodes(tx, doc_id)?;
+            crud::save_snapshot(tx, doc_id, "R000", &nodes)?;
             Ok::<_, AnyhowErr>(())
         })
         .map_err(|e| err(format!("seed revision: {e}")))
@@ -1202,6 +1200,7 @@ pub fn run() {
             list_branches,
             create_branch,
             merge_branch,
+            checkout_branch,
             ai_chat,
             abort_ai_chat,
             list_documents,

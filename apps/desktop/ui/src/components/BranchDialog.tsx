@@ -87,6 +87,20 @@ export function BranchDialog({ open, onOpenChange, onChanged }: BranchDialogProp
     }
   };
 
+  const checkoutBranch = async (name: string) => {
+    setBusy(`checkout:${name}`);
+    setError(null);
+    try {
+      await invoke<string>("checkout_branch", { name });
+      await refresh();
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const sortedBranches: BranchRow[] = branches
     ? [...branches].sort((a, b) => {
         if (a.name === "main") return -1;
@@ -104,7 +118,7 @@ export function BranchDialog({ open, onOpenChange, onChanged }: BranchDialogProp
             Branches
           </DialogTitle>
           <DialogDescription>
-            Snapshot a branch from the current head, or merge a named branch back into main.
+            Create a branch, switch between branches, or merge into main after checking out main.
           </DialogDescription>
         </DialogHeader>
 
@@ -161,6 +175,7 @@ export function BranchDialog({ open, onOpenChange, onChanged }: BranchDialogProp
                   key={b.name}
                   branch={b}
                   busy={busy}
+                  onCheckout={() => void checkoutBranch(b.name)}
                   onMerge={() => void mergeBranch(b.name)}
                 />
               ))}
@@ -181,10 +196,11 @@ export function BranchDialog({ open, onOpenChange, onChanged }: BranchDialogProp
 interface BranchRowProps {
   branch: BranchRow;
   busy: string | null;
+  onCheckout: () => void;
   onMerge: () => void;
 }
 
-function BranchRowView({ branch, busy, onMerge }: BranchRowProps) {
+function BranchRowView({ branch, busy, onCheckout, onMerge }: BranchRowProps) {
   const isMain = branch.name === "main";
   const isBusy = busy === `merge:${branch.name}`;
   const Icon: LucideIcon = isMain ? GitBranch : GitBranch;
@@ -214,6 +230,9 @@ function BranchRowView({ branch, busy, onMerge }: BranchRowProps) {
           )}
         </div>
       </div>
+      <Button size="sm" variant="outline" onClick={onCheckout} disabled={busy !== null}>
+        Checkout
+      </Button>
       {!isMain && (
         <Button
           size="sm"

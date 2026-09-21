@@ -367,24 +367,12 @@ async fn merge(
         let head = crud::head_revision(s.store.conn(), doc_id)
             .str_err()?
             .ok_or_else(|| "no head revision".to_string())?;
-        let op = Operation {
-            id: OpId::new(format!("OP-mcp-merge-{branch}")),
-            op_type: OperationType::Branch,
-            target: None,
-            expected_revision: RevisionId::new(head.clone()),
-            expected_hash: None,
-            target_revision: None,
-            targets: vec![],
-            actor: Provenance::human(Some("mcp".into())),
-            patch: None,
-            reason: Some(reason.unwrap_or_else(|| format!("merge {branch} into main"))),
-        };
-        let outcome =
-            apply_operation(&mut s.store, doc_id, op).map_err(|e| format!("merge: {e}"))?;
+        let outcome = aidoc::merge_branch(&mut s.store, doc_id, &branch, reason)
+            .map_err(|e| format!("merge: {e}"))?;
         Ok(MergeResult {
             branch,
             parent: head,
-            new_revision: outcome.revision.as_str().to_string(),
+            new_revision: outcome.as_str().to_string(),
         })
     })
 }
@@ -719,6 +707,7 @@ fn seed_root_and_r000(store: &mut Store, doc_id: &str, title: &str) -> anyhow::R
             branch: None,
         };
         crud::insert_revision(tx, doc_id, &rev, true)?;
+        crud::save_snapshot(tx, doc_id, "R000", &[root])?;
         Ok::<_, AnyhowErr>(())
     })?;
     Ok(())
