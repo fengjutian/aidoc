@@ -34,6 +34,20 @@ test("wrapForKind: heading becomes h2", () => {
   assert.equal(wrapForKind("heading", "Title"), "<h2>Title</h2>");
 });
 
+test("wrapForKind: multiline heading preserves following lines", () => {
+  assert.equal(
+    wrapForKind("heading", "Title\nBody one\nBody two"),
+    "<h2>Title</h2><p>Body one</p><p>Body two</p>",
+  );
+});
+
+test("unwrapForKind: block elements preserve line breaks", () => {
+  assert.equal(
+    unwrapForKind("paragraph", "<p>line1</p><p>line2</p>"),
+    "line1\nline2",
+  );
+});
+
 test("wrapForKind: link kind emits an anchor", () => {
   const out = wrapForKind("link", "https://example.com");
   assert.equal(

@@ -37,10 +37,11 @@ export function escapeHtml(s: string): string {
 }
 
 export function stripTags(html: string): string {
-  // Cheap strip: drop every wrapper + inner tag we use, keep text. Good
-  // enough for round-tripping the simple kinds we ship.
+  // Preserve visual block boundaries before dropping markup. Without this,
+  // `<p>one</p><p>two</p>` became `onetwo` after the first edit/save cycle.
   return html
     .replace(/<br\s*\/?>/g, "\n")
+    .replace(/<\/(?:p|h[1-6]|li|blockquote|pre|tr|details|summary)>/g, "\n")
     .replace(/<\/?(?:p|h[1-6]|li|ul|ol|blockquote|pre|code|strong|em|span|details|summary|table|tbody|tr|td|img|a)[^>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -64,7 +65,10 @@ export function wrapForKind(kind: Kind, content: string): string {
     case "code-ref":
       return `<p><strong>code-ref</strong> — ${escapeHtml(content)}</p>`;
     case "heading":
-      return `<h2>${escapeHtml(content)}</h2>`;
+      return content
+        .split(/\n+/)
+        .map((line, index) => index === 0 ? `<h2>${escapeHtml(line)}</h2>` : `<p>${escapeHtml(line)}</p>`)
+        .join("");
     case "list-item":
       return `<ul><li>${escapeHtml(content)}</li></ul>`;
     case "table":
