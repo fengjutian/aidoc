@@ -17,8 +17,6 @@ import {
   Settings as SettingsIcon,
   Keyboard,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Sparkles,
   Undo2,
   Search as SearchIcon,
@@ -184,7 +182,7 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NodeRow[] | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(true);
   const refreshEpoch = useRef(0);
 
@@ -749,14 +747,6 @@ export default function App() {
     <TooltipProvider delayDuration={300}>
       <div className="app-shell">
       <header className="app-header">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
-              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{sidebarOpen ? "Hide sidebar" : "Show sidebar"}</TooltipContent>
-        </Tooltip>
         <Sparkles className="h-4 w-4 text-primary" />
         <h1 className="document-title">
           {info.title}
@@ -764,6 +754,23 @@ export default function App() {
             · head={info.head_revision}
           </span>
         </h1>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant={sidebarOpen ? "secondary" : "ghost"}
+              className="h-8 shrink-0 gap-1.5 px-2"
+              onClick={() => setSidebarOpen((open) => !open)}
+              aria-label={sidebarOpen ? "Close document history" : "Open document history"}
+              aria-expanded={sidebarOpen}
+            >
+              <Clock className="h-4 w-4" />
+              <span className="hidden xl:inline">History</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{sidebarOpen ? "Close document history" : "Open document history"}</TooltipContent>
+        </Tooltip>
 
         {tabs.length > 0 && (
           <div className="document-tabs">
@@ -959,6 +966,14 @@ export default function App() {
       )}
 
       <div className={cn("workspace", !sidebarOpen && "sidebar-collapsed")}>
+        {sidebarOpen && (
+          <button
+            type="button"
+            className="workspace-popover-backdrop"
+            aria-label="Close document history"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         {sidebarOpen && <aside className="workspace-sidebar">
           <div className="border-b p-2">
             <div className="relative">
@@ -1002,7 +1017,10 @@ export default function App() {
                         <li key={n.id}>
                           <button
                             type="button"
-                            onClick={() => setActiveId(n.id)}
+                            onClick={() => {
+                              setActiveId(n.id);
+                              setSidebarOpen(false);
+                            }}
                             className={cn(
                               "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
                               n.id === activeId &&
@@ -1047,7 +1065,10 @@ export default function App() {
                 activeId={activeId}
                 collapsed={collapsed}
                 setCollapsed={setCollapsed}
-                setActiveId={setActiveId}
+                setActiveId={(id) => {
+                  setActiveId(id);
+                  if (id) setSidebarOpen(false);
+                }}
                 setLinkSource={setLinkSource}
                 setAttrsNodeId={setAttrsNodeId}
                 onCopyId={onCopyId}
