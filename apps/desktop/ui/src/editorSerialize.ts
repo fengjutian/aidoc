@@ -40,6 +40,7 @@ export function stripTags(html: string): string {
   // Preserve visual block boundaries before dropping markup. Without this,
   // `<p>one</p><p>two</p>` became `onetwo` after the first edit/save cycle.
   return html
+    .replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/g, "\n")
     .replace(/<br\s*\/?>/g, "\n")
     .replace(/<\/(?:p|h[1-6]|li|blockquote|pre|tr|details|summary)>/g, "\n")
     .replace(/<\/?(?:p|h[1-6]|li|ul|ol|blockquote|pre|code|strong|em|span|details|summary|table|tbody|tr|td|img|a)[^>]*>/g, "")
@@ -66,8 +67,8 @@ export function wrapForKind(kind: Kind, content: string): string {
       return `<p><strong>code-ref</strong> — ${escapeHtml(content)}</p>`;
     case "heading":
       return content
-        .split(/\n+/)
-        .map((line, index) => index === 0 ? `<h2>${escapeHtml(line)}</h2>` : `<p>${escapeHtml(line)}</p>`)
+        .split("\n")
+        .map((line, index) => index === 0 ? `<h2>${escapeHtml(line)}</h2>` : line ? `<p>${escapeHtml(line)}</p>` : "<p><br></p>")
         .join("");
     case "list-item":
       return `<ul><li>${escapeHtml(content)}</li></ul>`;
@@ -90,8 +91,8 @@ export function wrapForKind(kind: Kind, content: string): string {
     case "list":
     default:
       return content
-        .split(/\n+/)
-        .map((l) => `<p>${escapeHtml(l)}</p>`)
+        .split("\n")
+        .map((line) => line ? `<p>${escapeHtml(line)}</p>` : "<p><br></p>")
         .join("");
   }
 }

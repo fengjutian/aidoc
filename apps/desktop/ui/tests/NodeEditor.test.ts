@@ -114,3 +114,17 @@ test("wrapForKind: paragraph newlines become separate p tags", () => {
     "<p>line1</p><p>line2</p>",
   );
 });
+
+test("wrapForKind: paragraph preserves intentional blank lines", () => {
+  assert.equal(
+    wrapForKind("paragraph", "line1\n\nline2"),
+    "<p>line1</p><p><br></p><p>line2</p>",
+  );
+});
+
+test("unwrapForKind: empty paragraphs remain blank lines", () => {
+  assert.equal(
+    unwrapForKind("paragraph", "<p>line1</p><p><br></p><p>line2</p>"),
+    "line1\n\nline2",
+  );
+});

@@ -1162,13 +1162,6 @@ export default function App() {
           <div className="editor-canvas">
             {active ? (
               <section className="editor-surface">
-                <div className="editor-context">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Current node</div>
-                    <div className="truncate text-sm font-medium">{active.id}</div>
-                  </div>
-                  <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{active.kind}</span>
-                </div>
                 <NodeEditor
                   key={active.id}
                   kind={active.kind as never}
