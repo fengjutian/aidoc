@@ -508,7 +508,16 @@ fn activate_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoD
 #[tauri::command]
 fn close_doc(state: tauri::State<'_, AppState>, path: Option<String>) -> Result<Vec<InfoDto>, String> {
     let mut g = state.inner.lock().unwrap();
-    if !g.close(path.as_deref().map(std::path::Path::new)) {
+    let target = path.as_deref().map(std::path::Path::new);
+    let index = match target {
+        Some(path) => g.sessions.iter().position(|s| same_path(&s.package.source_path, path)),
+        None => g.sessions.len().checked_sub(1),
+    }.ok_or_else(|| err("document is not open"))?;
+    {
+        let session = &mut g.sessions[index];
+        save_package(&mut session.package, &session.store).map_err(err)?;
+    }
+    if !g.close(target) {
         return Err("document is not open".into());
     }
     Ok(g.list())
