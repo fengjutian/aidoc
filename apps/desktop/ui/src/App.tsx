@@ -130,6 +130,7 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [linkSource, setLinkSource] = useState<string | null>(null);
   const [attrsNodeId, setAttrsNodeId] = useState<string | null>(null);
+  const [restoringRecent, setRestoringRecent] = useState(() => recent.length > 0);
 
   // Debounced AI-history persistence. Whenever `aiHistory` changes, schedule
   // a write to the `__ai_history__` metadata node — coalesced so a fast back-
@@ -258,18 +259,25 @@ export default function App() {
   useEffect(() => {
     if (autoOpenAttempted.current) return;
     autoOpenAttempted.current = true;
-    const last = recent[0];
-    if (!last) return;
+    if (recent.length === 0) {
+      setRestoringRecent(false);
+      return;
+    }
     void (async () => {
-      try {
-        const i = await invoke<Info>("open_doc", { path: last });
-        setInfo(i);
-        setTabs([i]);
-        setDocPath(last);
-      } catch {
-        // Keep the record. The file may only be temporarily unavailable;
-        // recent history is removed exclusively through the Forget button.
+      for (const path of recent) {
+        try {
+          const i = await invoke<Info>("open_doc", { path });
+          setInfo(i);
+          setTabs(await invoke<Info[]>("list_documents"));
+          setDocPath(path);
+          addOpened(path);
+          setRestoringRecent(false);
+          return;
+        } catch {
+          // Keep temporarily unavailable paths and try the next recent file.
+        }
       }
+      setRestoringRecent(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -437,8 +445,7 @@ export default function App() {
       addOpened(path);
     } catch (e) {
       if (isMissingFileError(e)) {
-        removeRecent(path);
-        setError(null);
+        setError("文档暂时无法访问，请确认文件位置或磁盘连接。");
       } else {
         setError(String(e));
       }
@@ -626,6 +633,17 @@ export default function App() {
       setError(String(e));
     }
   };
+
+  if (!info && restoringRecent) {
+    return (
+      <div className="flex h-full items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/25 border-t-primary" />
+          正在打开最近文档…
+        </div>
+      </div>
+    );
+  }
 
   if (!info) {
     return (

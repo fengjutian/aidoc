@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
+import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -21,6 +21,7 @@ import {
   Link2,
   List,
   ListOrdered,
+  MoreHorizontal,
   Quote,
   Table as TableIcon,
   Workflow,
@@ -34,8 +35,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -181,7 +180,7 @@ function RichEditor({ kind, content, onChange, onKindChange }: Props) {
           {onKindChange && (
             <KindPicker kind={kind} onChange={onKindChange} />
           )}
-          {!isCode && <FloatingToolbar editor={editor} />}
+          {!isCode && <EditorToolbar editor={editor} />}
           <EditorContent editor={editor} />
         </TooltipProvider>
       )}
@@ -250,25 +249,41 @@ function KindPicker({
   kind: Kind;
   onChange: (k: Kind) => void;
 }) {
-  const current = KINDS.find((k) => k.id === kind) ?? KINDS[KINDS.length - 1];
   return (
-    <div className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/30 px-3 py-2">
       <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Kind
+        Block
       </span>
+      {FAVORITE_KINDS.map((id) => {
+        const item = KINDS.find((candidate) => candidate.id === id)!;
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            variant={item.id === kind ? "secondary" : "ghost"}
+            size="sm"
+            className={cn("h-7 gap-1.5 px-2", item.id === kind && "ring-1 ring-border")}
+            onClick={() => onChange(item.id)}
+            aria-pressed={item.id === kind}
+          >
+            <item.Icon className={cn("h-3.5 w-3.5", item.tone)} />
+            {item.label}
+          </Button>
+        );
+      })}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs font-semibold"
-                aria-label={`Node kind: ${current.label}`}
+                aria-label="More block types"
               >
-                <current.Icon className={cn("h-3.5 w-3.5", current.tone)} />
-                {current.label}
+                <MoreHorizontal className="h-3.5 w-3.5" />
+                More
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
@@ -276,26 +291,6 @@ function KindPicker({
           <TooltipContent>Switch node kind</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" className="w-48">
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Quick
-          </DropdownMenuLabel>
-          {FAVORITE_KINDS.map((id) => {
-            const k = KINDS.find((x) => x.id === id)!;
-            return (
-              <DropdownMenuItem
-                key={k.id}
-                onSelect={() => onChange(k.id)}
-                className={cn(k.id === kind && "font-semibold text-primary")}
-              >
-                <k.Icon className={cn("h-4 w-4", k.tone || "text-muted-foreground")} />
-                <span className="flex-1">{k.label}</span>
-                {k.id === kind && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                )}
-              </DropdownMenuItem>
-            );
-          })}
-          <DropdownMenuSeparator />
           {KIND_GROUPS.map((group) => {
             const items = KINDS.filter((k) => k.group === group && !FAVORITE_KINDS.includes(k.id));
             if (items.length === 0) return null;
@@ -344,7 +339,7 @@ function KindPicker({
  * Floating inline toolbar — appears above the current text selection instead
  * of pinning itself above the editor like the previous static toolbar.
  */
-function FloatingToolbar({
+function EditorToolbar({
   editor,
 }: {
   editor: NonNullable<ReturnType<typeof useEditor>>;
@@ -381,11 +376,7 @@ function FloatingToolbar({
     </Tooltip>
   );
   return (
-    <BubbleMenu
-      editor={editor}
-      tippyOptions={{ duration: 120, placement: "top" }}
-      className="flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 shadow-md"
-    >
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-card px-3 py-1.5">
       <Tip
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
@@ -442,7 +433,7 @@ function FloatingToolbar({
         label="Code block"
         Icon={Code2}
       />
-    </BubbleMenu>
+    </div>
   );
 }
 
