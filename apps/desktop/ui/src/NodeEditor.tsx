@@ -82,6 +82,7 @@ interface Props {
   content: string;
   attributes?: Record<string, string>;
   onChange: (html: string) => void;
+  onAttributesChange?: (attributes: Record<string, string>) => void;
   onKindChange?: (kind: Kind) => void;
 }
 
@@ -90,7 +91,7 @@ interface Props {
  * Tiptap rich-text editor. Output is plain HTML, which the AIDoc Operation
  * pipeline persists as `Patch.content`.
  */
-export function NodeEditor({ kind, content, onChange, onKindChange, attributes }: Props) {
+export function NodeEditor({ kind, content, onChange, onKindChange, attributes, onAttributesChange }: Props) {
   if (kind === "diagram") {
     return <DiagramView source={content} onChange={onChange} editable />;
   }
@@ -103,9 +104,7 @@ export function NodeEditor({ kind, content, onChange, onKindChange, attributes }
         content={content}
         attributes={attributes ?? {}}
         onChange={onChange}
-        onAttributesChange={() => {
-          // Surface through the global "Edit attributes" dialog; no-op here.
-        }}
+        onAttributesChange={onAttributesChange ?? (() => {})}
       />
     );
   }

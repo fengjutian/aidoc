@@ -432,6 +432,16 @@ export default function App() {
     }
   };
 
+  const onUpdateAttributes = async (target: string, attrs: Record<string, string>) => {
+    try {
+      await invoke<string>("set_node_attributes", { target, attrs });
+      if (settings.autosave) await invoke("save_doc");
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const onCreateNode = async (id: string, kind: string, content: string) => {
     setError(null);
     try {
@@ -1073,6 +1083,7 @@ export default function App() {
                 content={active.content}
                 attributes={active.attributes}
                 onChange={(html) => onUpdate(active.id, html)}
+                onAttributesChange={(attrs) => void onUpdateAttributes(active.id, attrs)}
                 onKindChange={(kind) => onChangeKind(active.id, kind)}
               />
             ) : (

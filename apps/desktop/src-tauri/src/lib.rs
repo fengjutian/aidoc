@@ -627,6 +627,51 @@ fn resolve_image_asset(
     asset_data_url(&session.package.workspace_path().join(relative))
 }
 
+fn resolve_code_ref(package_path: &std::path::Path, source: &str) -> Result<PathBuf, String> {
+    let source_path = std::path::Path::new(source);
+    if source.trim().is_empty() { return Err("code reference source is empty".into()); }
+    let candidates = if source_path.is_absolute() {
+        vec![source_path.to_path_buf()]
+    } else {
+        if source_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err("code reference source may not contain '..'".into());
+        }
+        let mut roots = Vec::new();
+        if let Ok(root) = std::env::var("AIDOC_SOURCE_ROOT") { roots.push(PathBuf::from(root)); }
+        if let Some(parent) = package_path.parent() { roots.push(parent.to_path_buf()); }
+        if let Ok(cwd) = std::env::current_dir() { roots.push(cwd); }
+        roots.into_iter().map(|root| root.join(source_path)).collect()
+    };
+    candidates.into_iter().find_map(|p| p.canonicalize().ok().filter(|p| p.is_file()))
+        .ok_or_else(|| format!("source file not found: {source}"))
+}
+
+#[tauri::command]
+fn open_code_ref(
+    state: tauri::State<'_, AppState>,
+    source: String,
+    line: Option<u32>,
+) -> Result<String, String> {
+    let g = state.inner.lock().unwrap();
+    let session = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    let path = resolve_code_ref(&session.package.source_path, &source)?;
+    let goto = match line.filter(|n| *n > 0) {
+        Some(line) => format!("{}:{line}", path.display()),
+        None => path.display().to_string(),
+    };
+    if Command::new("code").arg("--goto").arg(&goto).spawn().is_ok() {
+        return Ok(path.display().to_string());
+    }
+    #[cfg(target_os = "windows")]
+    let opened = Command::new("explorer.exe").arg(&path).spawn();
+    #[cfg(target_os = "macos")]
+    let opened = Command::new("open").arg(&path).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let opened = Command::new("xdg-open").arg(&path).spawn();
+    opened.map_err(|e| format!("could not launch an editor or system opener: {e}"))?;
+    Ok(path.display().to_string())
+}
+
 #[tauri::command]
 fn list_nodes(state: tauri::State<'_, AppState>) -> Result<Vec<NodeDto>, String> {
     let g = state.inner.lock().unwrap();
@@ -1332,6 +1377,7 @@ pub fn run() {
             save_doc_as,
             import_image_asset,
             resolve_image_asset,
+            open_code_ref,
             list_nodes,
             list_revisions,
             update_node,
@@ -1389,6 +1435,18 @@ mod tests {
         drop(store);
         let (reopened, _store) = open_package(&target).unwrap();
         assert_eq!(std::fs::read(reopened.workspace_path().join(relative)).unwrap(), bytes);
+    }
+
+    #[test]
+    fn code_ref_resolves_beside_package_and_rejects_parent_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let package = dir.path().join("doc.aidoc");
+        let source = dir.path().join("src/main.rs");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, "fn main() {}\n").unwrap();
+        assert_eq!(resolve_code_ref(&package, "src/main.rs").unwrap(), source.canonicalize().unwrap());
+        assert!(resolve_code_ref(&package, "../secret.txt").unwrap_err().contains("may not contain"));
+        assert!(resolve_code_ref(&package, "missing.rs").unwrap_err().contains("not found"));
     }
 
     #[test]
