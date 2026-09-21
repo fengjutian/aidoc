@@ -273,7 +273,7 @@ fn emit_node(
             );
         }
         NodeKind::Image => {
-            let src = node.attributes.get("src").cloned().unwrap_or_default();
+            let src = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
             let _ = writeln!(
                 out,
                 "{}<img src=\"{}\" alt=\"{}\"{}>",

@@ -142,6 +142,47 @@ struct BranchDto {
     revisions: usize,
 }
 
+#[derive(Debug, Serialize)]
+struct AssetDto {
+    path: String,
+    data_url: String,
+}
+
+const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+fn image_mime(path: &std::path::Path) -> Option<&'static str> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        "bmp" => Some("image/bmp"),
+        _ => None,
+    }
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = ((chunk[0] as u32) << 16)
+            | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8)
+            | chunk.get(2).copied().unwrap_or(0) as u32;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn asset_data_url(path: &std::path::Path) -> Result<String, String> {
+    let mime = image_mime(path).ok_or_else(|| err("unsupported image type"))?;
+    let bytes = std::fs::read(path).map_err(err)?;
+    Ok(format!("data:{mime};base64,{}", base64(&bytes)))
+}
+
 fn err<E: std::fmt::Display>(s: E) -> String {
     s.to_string()
 }
@@ -551,6 +592,42 @@ fn save_doc_as(
 }
 
 #[tauri::command]
+fn import_image_asset(
+    state: tauri::State<'_, AppState>,
+    source_path: String,
+) -> Result<AssetDto, String> {
+    let source = PathBuf::from(source_path);
+    let metadata = std::fs::metadata(&source).map_err(err)?;
+    if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
+        return Err(format!("image must be a file no larger than {} MiB", MAX_IMAGE_BYTES / 1024 / 1024));
+    }
+    let mime = image_mime(&source).ok_or_else(|| err("supported image types: png, jpg, gif, webp, svg, bmp"))?;
+    let bytes = std::fs::read(&source).map_err(err)?;
+    let extension = source.extension().and_then(|v| v.to_str()).unwrap().to_ascii_lowercase();
+    let relative = format!("assets/{}.{}", aidoc::model::id::sha256_hex(&bytes), extension);
+    let mut g = state.inner.lock().unwrap();
+    let session = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let destination = session.package.workspace_path().join(&relative);
+    if let Some(parent) = destination.parent() { std::fs::create_dir_all(parent).map_err(err)?; }
+    if !destination.exists() { std::fs::write(&destination, &bytes).map_err(err)?; }
+    Ok(AssetDto { path: relative, data_url: format!("data:{mime};base64,{}", base64(&bytes)) })
+}
+
+#[tauri::command]
+fn resolve_image_asset(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    let relative = std::path::Path::new(&path);
+    if relative.is_absolute() || !path.starts_with("assets/") || path.contains("..") {
+        return Err("invalid package asset path".into());
+    }
+    let g = state.inner.lock().unwrap();
+    let session = g.as_ref().ok_or_else(|| err("no doc open"))?;
+    asset_data_url(&session.package.workspace_path().join(relative))
+}
+
+#[tauri::command]
 fn list_nodes(state: tauri::State<'_, AppState>) -> Result<Vec<NodeDto>, String> {
     let g = state.inner.lock().unwrap();
     let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
@@ -864,7 +941,8 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let doc = crud::get_document(s.store.conn(), &doc_id)
         .map_err(err)?
         .ok_or_else(|| err("doc missing"))?;
-    let nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
+    let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
+    inline_package_images(s, &mut nodes)?;
     let branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
     Ok(aidoc::exporter::export_html(
         &doc,
@@ -881,8 +959,21 @@ fn export_markdown(state: tauri::State<'_, AppState>) -> Result<String, String> 
     let doc = crud::get_document(s.store.conn(), &doc_id)
         .map_err(err)?
         .ok_or_else(|| err("doc missing"))?;
-    let nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
+    let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
+    inline_package_images(s, &mut nodes)?;
     Ok(aidoc::exporter::export_markdown(&doc, &nodes))
+}
+
+fn inline_package_images(session: &SessionHandle, nodes: &mut [Node]) -> Result<(), String> {
+    for node in nodes.iter_mut().filter(|n| n.kind == NodeKind::Image) {
+        let source = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
+        if source.starts_with("assets/") && !source.contains("..") {
+            let data_url = asset_data_url(&session.package.workspace_path().join(&source))?;
+            node.content = data_url.clone();
+            node.attributes.insert("src".into(), data_url);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1251,6 +1342,8 @@ pub fn run() {
             open_doc,
             save_doc,
             save_doc_as,
+            import_image_asset,
+            resolve_image_asset,
             list_nodes,
             list_revisions,
             update_node,

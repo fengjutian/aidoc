@@ -197,7 +197,7 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
             let _ = writeln!(out, "[{content}]({href})");
         }
         NodeKind::Image => {
-            let src = node.attributes.get("src").cloned().unwrap_or_default();
+            let src = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
             let _ = writeln!(out, "![{content}]({src})");
         }
         NodeKind::Diagram => {
