@@ -54,7 +54,13 @@ python apps/ai/agent.py --mcp-bin target/debug/aidoc-mcp.exe \
 | `demo <path> [--export-html <out>]` | Run a full create → update → revert loop. |
 | `example <template> <path>` | Scaffold `order-system` / `api-system` / `knowledge-graph`. |
 | `branch <path> <name>` | Tag the current head with a named branch. |
+| `checkout <path> <branch>` | Switch the live document to `main` or a named branch tip. |
 | `merge <path> <branch>` | Merge a named branch back into main. |
+
+Branch workflow: create a branch, edit it, `checkout <path> main`, then
+`merge <path> <branch>`. Merge compares node snapshots against the common
+ancestor, combines disjoint edits, and rejects conflicting node edits without
+changing the document. Relation edits on named branches are not yet supported.
 
 ## Desktop
 

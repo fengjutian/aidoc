@@ -173,10 +173,11 @@ export default function App() {
   const refresh = async () => {
     if (!info) return;
     try {
-      const [n, r, rel] = await Promise.all([
+      const [n, r, rel, docs] = await Promise.all([
         invoke<NodeRow[]>("list_nodes"),
         invoke<RevisionRow[]>("list_revisions"),
         invoke<RelationRow[]>("list_relations"),
+        invoke<Info[]>("list_documents"),
       ]);
       setNodes(n);
       setRevs(r);
@@ -208,9 +209,7 @@ export default function App() {
       } else {
         setAiHistory([]);
       }
-      setInfo((prev) =>
-        prev ? { ...prev, head_revision: r.at(-1)?.id ?? prev.head_revision } : prev,
-      );
+      setInfo((prev) => docs[0] ?? prev);
     } catch (e) {
       setError(String(e));
     }

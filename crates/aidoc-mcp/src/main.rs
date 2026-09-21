@@ -377,6 +377,16 @@ async fn merge(
     })
 }
 
+async fn checkout(
+    state: Arc<ServerState>,
+    args: serde_json::Map<String, serde_json::Value>,
+) -> Result<String, String> {
+    let name: String = need(&args, "branch")?;
+    with_doc(&state, |s, doc_id| {
+        aidoc::checkout_branch(&mut s.store, doc_id, &name).map_err(|e| e.to_string())
+    })
+}
+
 // ---------- server ----------
 
 #[derive(Clone)]
@@ -484,6 +494,10 @@ impl AIDocServer {
                 "Merge a named branch back into main (spec §35).",
                 |s, a| merge(s, a),
             ),
+        );
+        tools.insert(
+            "checkout".into(),
+            tool_entry("Switch to main or a named branch tip. Arguments: {branch: string}.", |s, a| checkout(s, a)),
         );
 
         Self {

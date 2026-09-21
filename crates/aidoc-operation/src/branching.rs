@@ -109,6 +109,14 @@ pub fn merge_branch(store: &mut Store, doc_id: &str, name: &str, reason: Option<
         if let Some(parent) = &node.parent {
             if !merged.contains_key(parent.as_str()) { return Err(BranchError::Conflicts(vec![node.id.as_str().into()])); }
         }
+        let mut seen = BTreeSet::new();
+        let mut current = Some(node);
+        while let Some(part) = current {
+            if !seen.insert(part.id.as_str()) {
+                return Err(BranchError::Conflicts(vec![node.id.as_str().into()]));
+            }
+            current = part.parent.as_ref().and_then(|p| merged.get(p.as_str()));
+        }
     }
     let seq = crud::max_revision_seq(store.conn(), doc_id)?;
     let revision = RevisionId::from_sequence(seq);

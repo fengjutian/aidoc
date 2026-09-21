@@ -78,6 +78,13 @@ pub fn apply_with_registry(
     op: Operation,
     registry: &HandlerRegistry,
 ) -> Result<ApplyOutcome, ApplyError> {
+    if matches!(op.op_type, OperationType::Link | OperationType::Unlink)
+        && crud::head_branch(store.conn(), doc_id).map_err(ApplyError::Store)?.is_some()
+    {
+        return Err(ApplyError::Invalid(
+            "relation edits on named branches are not supported by node-only snapshots".into(),
+        ));
+    }
     // 1. Optimistic concurrency + node/content/structure/relation preconditions
     //    (read-only, no tx needed). A §36 conflict surfaces as ApplyError::Conflict
     //    so callers can render the machine-readable shape; anything else keeps the
