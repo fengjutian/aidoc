@@ -320,6 +320,13 @@ impl OperationHandler for SplitHandler {
             ctx.insert_node(&new_node)?;
         }
         ctx.delete_node(&source)?;
+        // Keep the source subtree attached to the first replacement node.
+        for mut child in crud::list_nodes(ctx.tx, ctx.doc_id)? {
+            if child.parent.as_ref() == Some(&source) {
+                child.parent = Some(targets[0].clone());
+                ctx.update_node(&child)?;
+            }
+        }
         ctx.record_change(
             &source,
             ChangeType::Split,
