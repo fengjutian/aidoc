@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Download, Eraser, Loader2, Send, Sparkles, Square } from "lucide-react";
+import { Download, Eraser, Loader2, Send, Sparkles, Square, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DiffPreviewDialog } from "@/components/DiffPreviewDialog";
 import { cn } from "@/lib/utils";
 import { resolveProviderDefaults, type Settings } from "@/hooks/useSettings";
 
@@ -105,6 +106,8 @@ export function AiChat({
     items: string[];
     index: number;
   } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpJson, setPreviewOpJson] = useState("");
 
   const sortedNodeIds = useMemo(
     () => [...nodeIds].sort((a, b) => a.localeCompare(b)),
@@ -375,6 +378,37 @@ export function AiChat({
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={() => {
+                  // Pre-fill with a template the user can edit. The dialog
+                  // is also reachable from elsewhere with custom JSON.
+                  setPreviewOpJson(
+                    JSON.stringify(
+                      {
+                        id: `op-${Date.now()}`,
+                        type: "update",
+                        target: "root",
+                        expected_revision: "R000",
+                        actor: {
+                          type: "operation",
+                          actor: { type: "human", id: "desktop" },
+                        },
+                        patch: { content: "edit me" },
+                      },
+                      null,
+                      2,
+                    ),
+                  );
+                  setPreviewOpen(true);
+                }}
+                aria-label="Preview an operation"
+              >
+                <Wand2 className="mr-1 h-3 w-3" />
+                Preview op…
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground"
                 onClick={clear}
                 aria-label="Clear conversation"
               >
@@ -529,6 +563,21 @@ export function AiChat({
           )}
         </form>
       </DialogContent>
+      <DiffPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        initialOpJson={previewOpJson}
+        onApplied={(rev) => {
+          // Best-effort notify parent so it can re-fetch the document.
+          // The parent component owns the refresh path; we just bump a
+          // custom event so listeners can decide.
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("aidoc:operation-applied", { detail: { revision: rev } }),
+            );
+          }
+        }}
+      />
     </Dialog>
   );
 }

@@ -5,8 +5,8 @@
 
 use aidoc::{
     ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
-    Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
-    save_package,
+    PreviewReport, Provenance, Revision, RevisionId, apply_operation, create_package,
+    open_package, preview_operation, revert_to, save_package,
     validator::{ValidationCategory, validate as core_validate},
 };
 use aidoc_storage::{Store, crud};
@@ -157,6 +157,118 @@ struct BranchDto {
 struct AssetDto {
     path: String,
     data_url: String,
+}
+
+/// Wire-friendly shape for the dry-run preview tool (per-node / per-relation
+/// diff + the revision the op would create). Mirror of
+/// [`aidoc_mcp::PreviewReportDto`] — both layers speak the same shape.
+#[derive(Debug, Serialize)]
+struct NodeDiffDto {
+    status: String, // "added" | "removed" | "modified"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node: Option<NodeDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    before: Option<NodeDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    after: Option<NodeDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct RelationDiffDto {
+    status: String, // "added" | "removed"
+    relation_id: String,
+    source: String,
+    target: String,
+    kind: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PreviewReportDto {
+    current_revision: String,
+    next_revision: String,
+    summary: String,
+    nodes: Vec<(String, NodeDiffDto)>,
+    relations: Vec<(String, RelationDiffDto)>,
+}
+
+impl From<PreviewReport> for PreviewReportDto {
+    fn from(r: PreviewReport) -> Self {
+        use aidoc::operation::preview::{NodeDiff, RelationDiff};
+        let nodes = r
+            .nodes
+            .into_iter()
+            .map(|(id, diff)| {
+                let dto = match diff {
+                    NodeDiff::Added { node } => NodeDiffDto {
+                        status: "added".into(),
+                        node: Some(NodeDto::from(node)),
+                        before: None,
+                        after: None,
+                    },
+                    NodeDiff::Removed { node } => NodeDiffDto {
+                        status: "removed".into(),
+                        node: Some(NodeDto::from(node)),
+                        before: None,
+                        after: None,
+                    },
+                    NodeDiff::Modified { before, after } => NodeDiffDto {
+                        status: "modified".into(),
+                        node: None,
+                        before: Some(NodeDto::from(before)),
+                        after: Some(NodeDto::from(after)),
+                    },
+                    NodeDiff::Unchanged => unreachable!("diff engine skips unchanged nodes"),
+                };
+                (id.as_str().to_owned(), dto)
+            })
+            .collect();
+        let relations = r
+            .relations
+            .into_iter()
+            .map(|(id, diff)| {
+                let dto = match diff {
+                    RelationDiff::Added { relation } => RelationDiffDto {
+                        status: "added".into(),
+                        relation_id: relation.id.clone(),
+                        source: relation.source.as_str().to_owned(),
+                        target: relation.target.as_str().to_owned(),
+                        kind: relation.kind.as_str().to_owned(),
+                    },
+                    RelationDiff::Removed { relation } => RelationDiffDto {
+                        status: "removed".into(),
+                        relation_id: relation.id.clone(),
+                        source: relation.source.as_str().to_owned(),
+                        target: relation.target.as_str().to_owned(),
+                        kind: relation.kind.as_str().to_owned(),
+                    },
+                };
+                (id, dto)
+            })
+            .collect();
+        Self {
+            current_revision: r.current_revision.as_str().to_owned(),
+            next_revision: r.next_revision.as_str().to_owned(),
+            summary: r.summary,
+            nodes,
+            relations,
+        }
+    }
+}
+
+impl From<Node> for NodeDto {
+    fn from(n: Node) -> Self {
+        Self {
+            id: n.id.as_str().to_owned(),
+            kind: serde_json::to_value(n.kind)
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_owned()))
+                .unwrap_or_else(|| "generic".into()),
+            parent: n.parent.map(|p| p.as_str().to_owned()),
+            position: n.position,
+            content: n.content,
+            attributes: Default::default(), // attributes are surfaced separately
+        }
+    }
 }
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
@@ -831,6 +943,40 @@ fn list_revisions(state: tauri::State<'_, AppState>) -> Result<Vec<RevisionDto>,
             branch: r.branch,
         })
         .collect())
+}
+
+/// Dry-run an operation JSON against the active document. Returns a
+/// serializable [`PreviewReport`] so the UI can render a per-node / per-relation
+/// diff and let the user accept or reject individual changes before any
+/// mutation happens. The store is not modified.
+#[tauri::command]
+fn preview_operation_json(
+    state: tauri::State<'_, AppState>,
+    op_json: serde_json::Value,
+) -> Result<PreviewReportDto, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let op: Operation = serde_json::from_value(op_json).map_err(err)?;
+    preview_operation(&mut s.store, &doc_id, &op)
+        .map(PreviewReportDto::from)
+        .map_err(err)
+}
+
+/// Apply a raw operation JSON (typically one the user has already previewed).
+/// The caller is expected to have shown the diff and received explicit consent.
+#[tauri::command]
+fn apply_operation_json(
+    state: tauri::State<'_, AppState>,
+    op_json: serde_json::Value,
+) -> Result<String, String> {
+    let mut g = state.inner.lock().unwrap();
+    let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
+    let doc_id = s.package.manifest.document.id.clone();
+    let op: Operation = serde_json::from_value(op_json).map_err(err)?;
+    let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
+    s.package.manifest.set_revision(out.revision.as_str());
+    Ok(out.revision.as_str().to_owned())
 }
 
 #[tauri::command]
@@ -1582,6 +1728,8 @@ pub fn run() {
             save_doc,
             save_doc_as,
             import_doc_json,
+            preview_operation_json,
+            apply_operation_json,
             import_image_asset,
             resolve_image_asset,
             open_code_ref,
