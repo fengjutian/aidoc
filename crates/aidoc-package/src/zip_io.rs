@@ -64,3 +64,23 @@ pub fn pack_zip(src_dir: &Path, zip_path: &Path) -> io::Result<()> {
     temp.persist(zip_path).map_err(|e| e.error)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repacking_replaces_an_existing_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        let archive = dir.path().join("document.aidoc");
+        std::fs::write(source.join("content.txt"), "first").unwrap();
+        pack_zip(&source, &archive).unwrap();
+        std::fs::write(source.join("content.txt"), "second").unwrap();
+        pack_zip(&source, &archive).unwrap();
+        let extracted = dir.path().join("extracted");
+        extract_zip(&archive, &extracted).unwrap();
+        assert_eq!(std::fs::read_to_string(extracted.join("content.txt")).unwrap(), "second");
+    }
+}

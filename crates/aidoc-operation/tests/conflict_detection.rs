@@ -95,6 +95,19 @@ fn update_op(
     }
 }
 
+#[test]
+fn update_cannot_reparent_under_itself() {
+    let mut store = setup();
+    let created = apply_operation(&mut store, doc_id(), create_op("OP-1", "child", "R000", "text"))
+        .expect("create child");
+    let mut patch = Patch::default();
+    patch.attributes.insert("parent".into(), "child".into());
+    let mut op = update_op("OP-2", "child", created.revision.as_str(), "text", None);
+    op.patch = Some(patch);
+    let err = apply_operation(&mut store, doc_id(), op).expect_err("self-parent must conflict");
+    assert!(matches!(err, ApplyError::Conflict(_)));
+}
+
 fn link_op(
     id: &str,
     op_type: OperationType,
