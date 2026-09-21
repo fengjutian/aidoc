@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use aidoc_storage::Store;
 use aidoc_model::{Node, NodeKind};
+use aidoc_storage::Store;
 
 use crate::manifest::Manifest;
 use crate::zip_io;
@@ -109,7 +109,8 @@ pub fn create_package(
 
 /// Save the current workspace back to its source `.aidoc` ZIP.
 pub fn save_package(pkg: &mut Package, store: &Store) -> Result<(), PackageError> {
-    if let Some(head) = aidoc_storage::crud::head_revision(store.conn(), &pkg.manifest.document.id)? {
+    if let Some(head) = aidoc_storage::crud::head_revision(store.conn(), &pkg.manifest.document.id)?
+    {
         pkg.manifest.set_revision(head);
     } else {
         pkg.manifest.touch_updated();
@@ -159,23 +160,54 @@ impl Package {
 /// node copy. Live nodes keep their compact `assets/...` references.
 pub fn inline_image_assets(pkg: &Package, nodes: &mut [Node]) -> Result<(), PackageError> {
     for node in nodes.iter_mut().filter(|n| n.kind == NodeKind::Image) {
-        let source = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
-        if !source.starts_with("assets/") || source.contains("..") { continue; }
+        let source = node
+            .attributes
+            .get("src")
+            .cloned()
+            .unwrap_or_else(|| node.content.clone());
+        if !source.starts_with("assets/") || source.contains("..") {
+            continue;
+        }
         let path = pkg.workspace_path().join(&source);
-        let mime = match path.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
-            "png" => "image/png", "jpg" | "jpeg" => "image/jpeg", "gif" => "image/gif",
-            "webp" => "image/webp", "svg" => "image/svg+xml", "bmp" => "image/bmp",
-            other => return Err(PackageError::InvalidManifest(format!("unsupported image extension: {other}"))),
+        let mime = match path
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "svg" => "image/svg+xml",
+            "bmp" => "image/bmp",
+            other => {
+                return Err(PackageError::InvalidManifest(format!(
+                    "unsupported image extension: {other}"
+                )));
+            }
         };
         let bytes = std::fs::read(path)?;
-        const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
         for chunk in bytes.chunks(3) {
-            let n = ((chunk[0] as u32) << 16) | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8) | chunk.get(2).copied().unwrap_or(0) as u32;
+            let n = ((chunk[0] as u32) << 16)
+                | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8)
+                | chunk.get(2).copied().unwrap_or(0) as u32;
             encoded.push(TABLE[((n >> 18) & 63) as usize] as char);
             encoded.push(TABLE[((n >> 12) & 63) as usize] as char);
-            encoded.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-            encoded.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+            encoded.push(if chunk.len() > 1 {
+                TABLE[((n >> 6) & 63) as usize] as char
+            } else {
+                '='
+            });
+            encoded.push(if chunk.len() > 2 {
+                TABLE[(n & 63) as usize] as char
+            } else {
+                '='
+            });
         }
         let data_url = format!("data:{mime};base64,{encoded}");
         node.content = data_url.clone();

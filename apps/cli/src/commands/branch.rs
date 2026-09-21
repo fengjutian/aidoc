@@ -1,4 +1,4 @@
-﻿//! `aidoc branch` — tag the current head with a named branch (spec §34).
+//! `aidoc branch` — tag the current head with a named branch (spec §34).
 
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
@@ -39,8 +39,8 @@ pub fn run(path: &str, name: &str, reason: Option<&str>) -> Result<()> {
         targets: vec![],
         actor: Provenance::human(Some("cli".into())),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: None,
             title: None,
             semantic_type: None,

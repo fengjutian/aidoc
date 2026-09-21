@@ -1,4 +1,4 @@
-﻿//! Integration test for the full create → update → revert loop.
+//! Integration test for the full create → update → revert loop.
 //!
 //! Hits every MUST rule from spec §54:
 //!   1. Stable node ID
@@ -57,8 +57,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::human(Some("test".into())),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: Some("v1: 系统使用 MySQL 8.0。".into()),
             ..Default::default()
         }),
@@ -82,8 +82,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::ai("test-agent", Some("test-model".into())),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: Some("v2: 系统使用 MySQL 8.4，包含分库分表。".into()),
             ..Default::default()
         }),
@@ -152,8 +152,8 @@ fn create_update_revert_loop() {
         targets: vec![],
         actor: Provenance::human(None),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: Some("should not apply".into()),
             ..Default::default()
         }),
@@ -172,35 +172,46 @@ fn empty_attribute_value_removes_existing_attribute() {
     let mut store = setup();
     let mut add = Patch::default();
     add.attributes.insert("language".into(), "rust".into());
-    let first = apply_operation(&mut store, doc_id(), Operation {
-        id: OpId::new("OP-ATTR-1"),
-        op_type: OperationType::Update,
-        target: Some(NodeId::from_validated("root")),
-        expected_revision: RevisionId::new("R000"),
-        expected_hash: None,
-        target_revision: None,
-        targets: vec![],
-        actor: Provenance::human(None),
-        patch: Some(add),
-        reason: Some("add attribute".into()),
-    }).expect("add attribute");
+    let first = apply_operation(
+        &mut store,
+        doc_id(),
+        Operation {
+            id: OpId::new("OP-ATTR-1"),
+            op_type: OperationType::Update,
+            target: Some(NodeId::from_validated("root")),
+            expected_revision: RevisionId::new("R000"),
+            expected_hash: None,
+            target_revision: None,
+            targets: vec![],
+            actor: Provenance::human(None),
+            patch: Some(add),
+            reason: Some("add attribute".into()),
+        },
+    )
+    .expect("add attribute");
 
     let mut remove = Patch::default();
     remove.attributes.insert("language".into(), String::new());
-    apply_operation(&mut store, doc_id(), Operation {
-        id: OpId::new("OP-ATTR-2"),
-        op_type: OperationType::Update,
-        target: Some(NodeId::from_validated("root")),
-        expected_revision: first.revision,
-        expected_hash: None,
-        target_revision: None,
-        targets: vec![],
-        actor: Provenance::human(None),
-        patch: Some(remove),
-        reason: Some("remove attribute".into()),
-    }).expect("remove attribute");
+    apply_operation(
+        &mut store,
+        doc_id(),
+        Operation {
+            id: OpId::new("OP-ATTR-2"),
+            op_type: OperationType::Update,
+            target: Some(NodeId::from_validated("root")),
+            expected_revision: first.revision,
+            expected_hash: None,
+            target_revision: None,
+            targets: vec![],
+            actor: Provenance::human(None),
+            patch: Some(remove),
+            reason: Some("remove attribute".into()),
+        },
+    )
+    .expect("remove attribute");
 
     let node = crud::get_node(store.conn(), doc_id(), &NodeId::from_validated("root"))
-        .expect("get node").expect("root exists");
+        .expect("get node")
+        .expect("root exists");
     assert!(!node.attributes.contains_key("language"));
 }

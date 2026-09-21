@@ -79,7 +79,9 @@ pub fn apply_with_registry(
     registry: &HandlerRegistry,
 ) -> Result<ApplyOutcome, ApplyError> {
     if matches!(op.op_type, OperationType::Link | OperationType::Unlink)
-        && crud::head_branch(store.conn(), doc_id).map_err(ApplyError::Store)?.is_some()
+        && crud::head_branch(store.conn(), doc_id)
+            .map_err(ApplyError::Store)?
+            .is_some()
     {
         return Err(ApplyError::Invalid(
             "relation edits on named branches are not supported by node-only snapshots".into(),

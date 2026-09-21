@@ -158,10 +158,7 @@ enum Cmd {
     },
 
     /// Switch to the tip of main or a named branch.
-    Checkout {
-        path: String,
-        branch: String,
-    },
+    Checkout { path: String, branch: String },
 
     /// Three-way merge a named branch into the checked-out main branch.
     Merge {

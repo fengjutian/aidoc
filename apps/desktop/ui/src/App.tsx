@@ -609,11 +609,14 @@ export default function App() {
 
   const onExportHtml = async () => {
     setError(null);
+    const safeTitle = (info?.title || "untitled").replace(/[\\/:*?"<>|]+/g, "-");
+    const picked = await saveDialog({
+      defaultPath: `${safeTitle}.html`,
+      filters: [{ name: "HTML", extensions: ["html", "htm"] }],
+    });
+    if (!picked) return;
     try {
-      const html = await invoke<string>("export_html");
-      const blob = new Blob([html], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
+      await invoke("save_export_html", { path: picked });
     } catch (e) {
       setError(String(e));
     }
@@ -621,17 +624,14 @@ export default function App() {
 
   const onExportMarkdown = async () => {
     setError(null);
+    const safeTitle = (info?.title || "untitled").replace(/[\\/:*?"<>|]+/g, "-");
+    const picked = await saveDialog({
+      defaultPath: `${safeTitle}.md`,
+      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+    });
+    if (!picked) return;
     try {
-      const md = await invoke<string>("export_markdown");
-      const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${info?.title || "untitled"}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await invoke("save_export_markdown", { path: picked });
     } catch (e) {
       setError(String(e));
     }

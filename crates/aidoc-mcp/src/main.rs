@@ -262,9 +262,15 @@ async fn export_html(state: Arc<ServerState>) -> Result<String, String> {
         aidoc::inline_image_assets(&s.package, &mut nodes).str_err()?;
         let relations = crud::list_relations(s.store.conn(), doc_id).str_err()?;
         let branch = crud::head_branch(s.store.conn(), doc_id).str_err()?;
-        Ok(aidoc::exporter::export(aidoc::ExportFormat::Html, &aidoc::ExportInput {
-            doc: &doc, nodes: &nodes, relations: &relations, branch: branch.as_deref(),
-        }))
+        Ok(aidoc::exporter::export(
+            aidoc::ExportFormat::Html,
+            &aidoc::ExportInput {
+                doc: &doc,
+                nodes: &nodes,
+                relations: &relations,
+                branch: branch.as_deref(),
+            },
+        ))
     })
 }
 
@@ -501,7 +507,10 @@ impl AIDocServer {
         );
         tools.insert(
             "checkout".into(),
-            tool_entry("Switch to main or a named branch tip. Arguments: {branch: string}.", |s, a| checkout(s, a)),
+            tool_entry(
+                "Switch to main or a named branch tip. Arguments: {branch: string}.",
+                |s, a| checkout(s, a),
+            ),
         );
 
         Self {

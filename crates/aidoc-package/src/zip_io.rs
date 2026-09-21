@@ -81,6 +81,9 @@ mod tests {
         pack_zip(&source, &archive).unwrap();
         let extracted = dir.path().join("extracted");
         extract_zip(&archive, &extracted).unwrap();
-        assert_eq!(std::fs::read_to_string(extracted.join("content.txt")).unwrap(), "second");
+        assert_eq!(
+            std::fs::read_to_string(extracted.join("content.txt")).unwrap(),
+            "second"
+        );
     }
 }

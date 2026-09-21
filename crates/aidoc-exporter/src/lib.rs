@@ -160,7 +160,14 @@ fn group_by_parent(nodes: &[Node]) -> Group<'_> {
     m
 }
 
-fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, all: &[Node], relations: &[Relation], depth: usize) {
+fn emit_md(
+    out: &mut String,
+    node: &Node,
+    by_parent: &Group<'_>,
+    all: &[Node],
+    relations: &[Relation],
+    depth: usize,
+) {
     let hashes = "#".repeat((depth + 1).min(6));
     let content = node.content.trim();
     match node.kind {
@@ -197,7 +204,11 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, all: &[Node], r
             let _ = writeln!(out, "[{content}]({href})");
         }
         NodeKind::Image => {
-            let src = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
+            let src = node
+                .attributes
+                .get("src")
+                .cloned()
+                .unwrap_or_else(|| node.content.clone());
             let _ = writeln!(out, "![{content}]({src})");
         }
         NodeKind::Diagram => {
@@ -237,14 +248,30 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, all: &[Node], r
         }
     }
 
-    let relevant: Vec<_> = relations.iter().filter_map(|rel| {
-        let (arrow, other) = if rel.source == node.id { ("→", &rel.target) }
-            else if rel.target == node.id { ("←", &rel.source) } else { return None; };
-        let kind = rel.custom_kind.as_deref().filter(|_| rel.kind.as_str() == "custom").unwrap_or(rel.kind.as_str());
-        let label = all.iter().find(|n| n.id == *other).map(|n| n.content.trim())
-            .filter(|s| !s.is_empty()).unwrap_or(other.as_str());
-        Some((arrow, kind, other.as_str(), label))
-    }).collect();
+    let relevant: Vec<_> = relations
+        .iter()
+        .filter_map(|rel| {
+            let (arrow, other) = if rel.source == node.id {
+                ("→", &rel.target)
+            } else if rel.target == node.id {
+                ("←", &rel.source)
+            } else {
+                return None;
+            };
+            let kind = rel
+                .custom_kind
+                .as_deref()
+                .filter(|_| rel.kind.as_str() == "custom")
+                .unwrap_or(rel.kind.as_str());
+            let label = all
+                .iter()
+                .find(|n| n.id == *other)
+                .map(|n| n.content.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(other.as_str());
+            Some((arrow, kind, other.as_str(), label))
+        })
+        .collect();
     if !relevant.is_empty() {
         let _ = writeln!(out, "**Relations**");
         for (arrow, kind, target, label) in relevant {
@@ -310,8 +337,22 @@ mod tests {
         let mut target = Node::new(NodeId::from_validated("target"), NodeKind::Paragraph);
         target.content = "Target".into();
         target.parent = Some(root.id.clone());
-        let relation = Relation { id: "r".into(), source: root.id.clone(), target: target.id.clone(), kind: RelationKind::References, custom_kind: None };
-        let out = export(ExportFormat::Markdown, &ExportInput { doc: &doc, nodes: &[root, target], relations: &[relation], branch: None });
+        let relation = Relation {
+            id: "r".into(),
+            source: root.id.clone(),
+            target: target.id.clone(),
+            kind: RelationKind::References,
+            custom_kind: None,
+        };
+        let out = export(
+            ExportFormat::Markdown,
+            &ExportInput {
+                doc: &doc,
+                nodes: &[root, target],
+                relations: &[relation],
+                branch: None,
+            },
+        );
         assert!(out.contains("→ `references` [Target](#target)"));
         assert!(out.contains("← `references` [Doc](#root)"));
     }

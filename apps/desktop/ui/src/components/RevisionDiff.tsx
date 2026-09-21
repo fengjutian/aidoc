@@ -502,18 +502,10 @@ function ComparePane({ revs, headRevision }: ComparePaneProps) {
                         {meta.label}
                       </span>
                     </div>
-                    {(e.before || e.after) && (
-                      <div className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] text-muted-foreground">
-                        {e.before && (
-                          <span>
-                            before: <code>{shortHash(e.before)}</code>
-                          </span>
-                        )}
-                        {e.after && (
-                          <span>
-                            after: <code>{shortHash(e.after)}</code>
-                          </span>
-                        )}
+                    {(e.before !== null || e.after !== null) && (
+                      <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                        <DiffContent label="Before" content={e.before} tone="border-red-500/20 bg-red-500/5" />
+                        <DiffContent label="After" content={e.after} tone="border-emerald-500/20 bg-emerald-500/5" />
                       </div>
                     )}
                   </div>
@@ -524,6 +516,19 @@ function ComparePane({ revs, headRevision }: ComparePaneProps) {
         )}
       </ScrollArea>
     </>
+  );
+}
+
+function DiffContent({ label, content, tone }: { label: string; content: string | null; tone: string }) {
+  return (
+    <div className={cn("min-w-0 rounded-md border p-2", tone)}>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </div>
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+        {content ?? "∅"}
+      </pre>
+    </div>
   );
 }
 

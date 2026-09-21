@@ -126,7 +126,11 @@ fn build_toc(out: &mut String, parent: &Node, by_parent: &Group<'_>, depth: usiz
                 buf,
                 "<li><a href=\"#{}\">{}</a>",
                 escape(c.id.as_str()),
-                escape(if c.content.is_empty() { c.id.as_str() } else { &c.content })
+                escape(if c.content.is_empty() {
+                    c.id.as_str()
+                } else {
+                    &c.content
+                })
             );
             // Recurse into children for nested lists.
             build_toc(&mut buf, c, by_parent, depth + 1);
@@ -146,21 +150,55 @@ fn build_toc(out: &mut String, parent: &Node, by_parent: &Group<'_>, depth: usiz
     }
 }
 
-fn emit_relations(out: &mut String, node: &Node, all: &[Node], relations: &[Relation], depth: usize) {
-    let relevant: Vec<_> = relations.iter().filter_map(|rel| {
-        let (direction, other) = if rel.source == node.id { ("out", &rel.target) }
-            else if rel.target == node.id { ("in", &rel.source) } else { return None; };
-        let kind = rel.custom_kind.as_deref().filter(|_| rel.kind.as_str() == "custom").unwrap_or(rel.kind.as_str());
-        let label = all.iter().find(|n| n.id == *other).map(|n| n.content.trim())
-            .filter(|s| !s.is_empty()).unwrap_or(other.as_str());
-        Some((direction, kind, other.as_str(), label))
-    }).collect();
-    if relevant.is_empty() { return; }
+fn emit_relations(
+    out: &mut String,
+    node: &Node,
+    all: &[Node],
+    relations: &[Relation],
+    depth: usize,
+) {
+    let relevant: Vec<_> = relations
+        .iter()
+        .filter_map(|rel| {
+            let (direction, other) = if rel.source == node.id {
+                ("out", &rel.target)
+            } else if rel.target == node.id {
+                ("in", &rel.source)
+            } else {
+                return None;
+            };
+            let kind = rel
+                .custom_kind
+                .as_deref()
+                .filter(|_| rel.kind.as_str() == "custom")
+                .unwrap_or(rel.kind.as_str());
+            let label = all
+                .iter()
+                .find(|n| n.id == *other)
+                .map(|n| n.content.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(other.as_str());
+            Some((direction, kind, other.as_str(), label))
+        })
+        .collect();
+    if relevant.is_empty() {
+        return;
+    }
     let indent = "  ".repeat(depth);
-    let _ = writeln!(out, "{indent}<aside class=\"aidoc-relations\" aria-label=\"Relations for {}\"><strong>Relations</strong><ul>", escape(node.id.as_str()));
+    let _ = writeln!(
+        out,
+        "{indent}<aside class=\"aidoc-relations\" aria-label=\"Relations for {}\"><strong>Relations</strong><ul>",
+        escape(node.id.as_str())
+    );
     for (direction, kind, target, label) in relevant {
         let arrow = if direction == "out" { "→" } else { "←" };
-        let _ = writeln!(out, "{indent}  <li><span>{arrow} {}</span> <a href=\"#{}\">{}</a></li>", escape(kind), escape(target), escape(label));
+        let _ = writeln!(
+            out,
+            "{indent}  <li><span>{arrow} {}</span> <a href=\"#{}\">{}</a></li>",
+            escape(kind),
+            escape(target),
+            escape(label)
+        );
     }
     let _ = writeln!(out, "{indent}</ul></aside>");
 }
@@ -296,7 +334,11 @@ fn emit_node(
             );
         }
         NodeKind::Image => {
-            let src = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
+            let src = node
+                .attributes
+                .get("src")
+                .cloned()
+                .unwrap_or_else(|| node.content.clone());
             let _ = writeln!(
                 out,
                 "{}<img src=\"{}\" alt=\"{}\"{}>",
@@ -494,7 +536,10 @@ mod tests {
         root.content = "Title".into();
         let html = render_html(&doc, &[root], &[], None);
         // The root section IS rendered as <h1>, but it must NOT also be a TOC entry.
-        assert!(html.contains("href=\"#root\"") == false, "root leaked into TOC");
+        assert!(
+            html.contains("href=\"#root\"") == false,
+            "root leaked into TOC"
+        );
     }
 
     #[test]
@@ -503,7 +548,13 @@ mod tests {
         let root = make_node("root", NodeKind::Section, "Doc");
         let mut target = make_node("target", NodeKind::Paragraph, "Target title");
         target.parent = Some(root.id.clone());
-        let relation = Relation { id: "rel-1".into(), source: root.id.clone(), target: target.id.clone(), kind: RelationKind::DependsOn, custom_kind: None };
+        let relation = Relation {
+            id: "rel-1".into(),
+            source: root.id.clone(),
+            target: target.id.clone(),
+            kind: RelationKind::DependsOn,
+            custom_kind: None,
+        };
         let html = render_html(&doc, &[root.clone(), target], &[relation], None);
         assert!(html.contains("→ depends-on"));
         assert!(html.contains("← depends-on"));

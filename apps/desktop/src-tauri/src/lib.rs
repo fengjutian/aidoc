@@ -4,12 +4,12 @@
 //! `invoke().then(...).catch(err => ...)` flow.
 
 use aidoc::{
+    apply_operation, create_package, open_package, revert_to, save_package,
+    validator::{validate as core_validate, ValidationCategory},
     ChangeType, Document, Node, NodeId, NodeKind, OpId, Operation, OperationType, Patch,
-    Provenance, Revision, RevisionId, apply_operation, create_package, open_package, revert_to,
-    save_package,
-    validator::{ValidationCategory, validate as core_validate},
+    Provenance, Revision, RevisionId,
 };
-use aidoc_storage::{Store, crud};
+use aidoc_storage::{crud, Store};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -49,7 +49,10 @@ impl WorkspaceState {
     }
 
     fn activate(&mut self, path: &std::path::Path) -> Option<&SessionHandle> {
-        let index = self.sessions.iter().position(|s| same_path(&s.package.source_path, path))?;
+        let index = self
+            .sessions
+            .iter()
+            .position(|s| same_path(&s.package.source_path, path))?;
         let session = self.sessions.remove(index);
         self.sessions.push(session);
         self.as_ref()
@@ -57,7 +60,10 @@ impl WorkspaceState {
 
     fn close(&mut self, path: Option<&std::path::Path>) -> bool {
         let index = match path {
-            Some(path) => self.sessions.iter().position(|s| same_path(&s.package.source_path, path)),
+            Some(path) => self
+                .sessions
+                .iter()
+                .position(|s| same_path(&s.package.source_path, path)),
             None => self.sessions.len().checked_sub(1),
         };
         if let Some(index) = index {
@@ -69,7 +75,10 @@ impl WorkspaceState {
     }
 
     fn list(&self) -> Vec<InfoDto> {
-        self.sessions.iter().map(|s| read_info(&s.store, &s.package)).collect()
+        self.sessions
+            .iter()
+            .map(|s| read_info(&s.store, &s.package))
+            .collect()
     }
 }
 
@@ -140,6 +149,7 @@ struct BranchDto {
     name: String,
     head: Option<String>,
     revisions: usize,
+    current: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -171,8 +181,16 @@ fn base64(bytes: &[u8]) -> String {
             | chunk.get(2).copied().unwrap_or(0) as u32;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -250,9 +268,7 @@ fn resolve_mcp_bin() -> Option<PathBuf> {
             // Mark when we've crossed the desktop app dir so on later walks
             // we also probe a sibling `crates/aidoc-mcp/target/...` for users
             // who ran `cargo run -p aidoc-mcp` standalone.
-            if dir.join("Cargo.toml").exists()
-                && dir.join("tauri.conf.json").exists()
-            {
+            if dir.join("Cargo.toml").exists() && dir.join("tauri.conf.json").exists() {
                 saw_desktop = true;
             }
             if saw_desktop {
@@ -302,15 +318,13 @@ fn ai_chat_impl(
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var("OPENAI_API_KEY").ok())
         .ok_or_else(|| {
-            "OPENAI_API_KEY not set. Add it in Settings → AI (or export the env var)."
-                .to_string()
+            "OPENAI_API_KEY not set. Add it in Settings → AI (or export the env var).".to_string()
         })?;
     let base = base_url.unwrap_or_else(|| {
         std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".into())
     });
-    let mdl = model.unwrap_or_else(|| {
-        std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into())
-    });
+    let mdl = model
+        .unwrap_or_else(|| std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into()));
 
     let mcp_bin = resolve_mcp_bin().ok_or_else(|| {
         "Could not locate aidoc-mcp binary. Set AIDOC_MCP_BIN env var to its \
@@ -443,10 +457,8 @@ fn ai_chat_impl(
                     let _ = app_for_thread.emit("ai-done", true);
                 }
                 Ok(status) => {
-                    let _ = app_for_thread.emit(
-                        "ai-error",
-                        format!("ai_chat exited with status {status}"),
-                    );
+                    let _ = app_for_thread
+                        .emit("ai-error", format!("ai_chat exited with status {status}"));
                 }
                 Err(e) => {
                     let _ = app_for_thread.emit("ai-error", format!("wait failed: {e}"));
@@ -470,14 +482,7 @@ fn ai_chat(
     history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
     ai_chat_impl(
-        app,
-        state,
-        prompt,
-        api_key,
-        base_url,
-        model,
-        doc_path,
-        history,
+        app, state, prompt, api_key, base_url, model, doc_path, history,
     )
 }
 
@@ -506,7 +511,14 @@ fn init_doc(
     doc_id: String,
     title: String,
 ) -> Result<InfoDto, String> {
-    if state.inner.lock().unwrap().sessions.iter().any(|s| same_path(&s.package.source_path, std::path::Path::new(&path))) {
+    if state
+        .inner
+        .lock()
+        .unwrap()
+        .sessions
+        .iter()
+        .any(|s| same_path(&s.package.source_path, std::path::Path::new(&path)))
+    {
         return Err("document is already open at this path".into());
     }
     let (package, store) =
@@ -515,19 +527,34 @@ fn init_doc(
     seed_root(&mut store, &doc_id, &title).map_err(err)?;
     seed_initial_revision(&mut store, &doc_id).map_err(err)?;
     let info = read_info(&store, &package);
-    state.inner.lock().unwrap().sessions.push(SessionHandle { store, package });
+    state
+        .inner
+        .lock()
+        .unwrap()
+        .sessions
+        .push(SessionHandle { store, package });
     Ok(info)
 }
 
 #[tauri::command]
 fn open_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, String> {
-    if let Some(existing) = state.inner.lock().unwrap().activate(std::path::Path::new(&path)) {
+    if let Some(existing) = state
+        .inner
+        .lock()
+        .unwrap()
+        .activate(std::path::Path::new(&path))
+    {
         return Ok(read_info(&existing.store, &existing.package));
     }
     let mut p = PathBuf::from(path);
     let (package, store) = open_package(&mut p).map_err(err)?;
     let info = read_info(&store, &package);
-    state.inner.lock().unwrap().sessions.push(SessionHandle { store, package });
+    state
+        .inner
+        .lock()
+        .unwrap()
+        .sessions
+        .push(SessionHandle { store, package });
     Ok(info)
 }
 
@@ -541,19 +568,28 @@ fn list_documents(state: tauri::State<'_, AppState>) -> Result<Vec<InfoDto>, Str
 #[tauri::command]
 fn activate_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, String> {
     let mut g = state.inner.lock().unwrap();
-    let s = g.activate(std::path::Path::new(&path)).ok_or_else(|| err("document is not open"))?;
+    let s = g
+        .activate(std::path::Path::new(&path))
+        .ok_or_else(|| err("document is not open"))?;
     Ok(read_info(&s.store, &s.package))
 }
 
 /// Close one tab (or the active tab when no path is supplied).
 #[tauri::command]
-fn close_doc(state: tauri::State<'_, AppState>, path: Option<String>) -> Result<Vec<InfoDto>, String> {
+fn close_doc(
+    state: tauri::State<'_, AppState>,
+    path: Option<String>,
+) -> Result<Vec<InfoDto>, String> {
     let mut g = state.inner.lock().unwrap();
     let target = path.as_deref().map(std::path::Path::new);
     let index = match target {
-        Some(path) => g.sessions.iter().position(|s| same_path(&s.package.source_path, path)),
+        Some(path) => g
+            .sessions
+            .iter()
+            .position(|s| same_path(&s.package.source_path, path)),
         None => g.sessions.len().checked_sub(1),
-    }.ok_or_else(|| err("document is not open"))?;
+    }
+    .ok_or_else(|| err("document is not open"))?;
     {
         let session = &mut g.sessions[index];
         save_package(&mut session.package, &session.store).map_err(err)?;
@@ -574,12 +610,12 @@ fn save_doc(state: tauri::State<'_, AppState>) -> Result<(), String> {
 /// Save the current workspace to a new `.aidoc` path and switch the active
 /// document to it. Subsequent `save_doc` calls write to the new path.
 #[tauri::command]
-fn save_doc_as(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+fn save_doc_as(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     let mut g = state.inner.lock().unwrap();
-    if g.sessions.iter().any(|s| same_path(&s.package.source_path, std::path::Path::new(&path))) {
+    if g.sessions
+        .iter()
+        .any(|s| same_path(&s.package.source_path, std::path::Path::new(&path)))
+    {
         return Err("another open document already uses this path".into());
     }
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
@@ -599,25 +635,41 @@ fn import_image_asset(
     let source = PathBuf::from(source_path);
     let metadata = std::fs::metadata(&source).map_err(err)?;
     if !metadata.is_file() || metadata.len() > MAX_IMAGE_BYTES {
-        return Err(format!("image must be a file no larger than {} MiB", MAX_IMAGE_BYTES / 1024 / 1024));
+        return Err(format!(
+            "image must be a file no larger than {} MiB",
+            MAX_IMAGE_BYTES / 1024 / 1024
+        ));
     }
-    let mime = image_mime(&source).ok_or_else(|| err("supported image types: png, jpg, gif, webp, svg, bmp"))?;
+    let mime = image_mime(&source)
+        .ok_or_else(|| err("supported image types: png, jpg, gif, webp, svg, bmp"))?;
     let bytes = std::fs::read(&source).map_err(err)?;
-    let extension = source.extension().and_then(|v| v.to_str()).unwrap().to_ascii_lowercase();
-    let relative = format!("assets/{}.{}", aidoc::model::id::sha256_hex(&bytes), extension);
+    let extension = source
+        .extension()
+        .and_then(|v| v.to_str())
+        .unwrap()
+        .to_ascii_lowercase();
+    let relative = format!(
+        "assets/{}.{}",
+        aidoc::model::id::sha256_hex(&bytes),
+        extension
+    );
     let mut g = state.inner.lock().unwrap();
     let session = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let destination = session.package.workspace_path().join(&relative);
-    if let Some(parent) = destination.parent() { std::fs::create_dir_all(parent).map_err(err)?; }
-    if !destination.exists() { std::fs::write(&destination, &bytes).map_err(err)?; }
-    Ok(AssetDto { path: relative, data_url: format!("data:{mime};base64,{}", base64(&bytes)) })
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent).map_err(err)?;
+    }
+    if !destination.exists() {
+        std::fs::write(&destination, &bytes).map_err(err)?;
+    }
+    Ok(AssetDto {
+        path: relative,
+        data_url: format!("data:{mime};base64,{}", base64(&bytes)),
+    })
 }
 
 #[tauri::command]
-fn resolve_image_asset(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<String, String> {
+fn resolve_image_asset(state: tauri::State<'_, AppState>, path: String) -> Result<String, String> {
     let relative = std::path::Path::new(&path);
     if relative.is_absolute() || !path.starts_with("assets/") || path.contains("..") {
         return Err("invalid package asset path".into());
@@ -629,20 +681,36 @@ fn resolve_image_asset(
 
 fn resolve_code_ref(package_path: &std::path::Path, source: &str) -> Result<PathBuf, String> {
     let source_path = std::path::Path::new(source);
-    if source.trim().is_empty() { return Err("code reference source is empty".into()); }
+    if source.trim().is_empty() {
+        return Err("code reference source is empty".into());
+    }
     let candidates = if source_path.is_absolute() {
         vec![source_path.to_path_buf()]
     } else {
-        if source_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        if source_path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
             return Err("code reference source may not contain '..'".into());
         }
         let mut roots = Vec::new();
-        if let Ok(root) = std::env::var("AIDOC_SOURCE_ROOT") { roots.push(PathBuf::from(root)); }
-        if let Some(parent) = package_path.parent() { roots.push(parent.to_path_buf()); }
-        if let Ok(cwd) = std::env::current_dir() { roots.push(cwd); }
-        roots.into_iter().map(|root| root.join(source_path)).collect()
+        if let Ok(root) = std::env::var("AIDOC_SOURCE_ROOT") {
+            roots.push(PathBuf::from(root));
+        }
+        if let Some(parent) = package_path.parent() {
+            roots.push(parent.to_path_buf());
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            roots.push(cwd);
+        }
+        roots
+            .into_iter()
+            .map(|root| root.join(source_path))
+            .collect()
     };
-    candidates.into_iter().find_map(|p| p.canonicalize().ok().filter(|p| p.is_file()))
+    candidates
+        .into_iter()
+        .find_map(|p| p.canonicalize().ok().filter(|p| p.is_file()))
         .ok_or_else(|| format!("source file not found: {source}"))
 }
 
@@ -659,7 +727,12 @@ fn open_code_ref(
         Some(line) => format!("{}:{line}", path.display()),
         None => path.display().to_string(),
     };
-    if Command::new("code").arg("--goto").arg(&goto).spawn().is_ok() {
+    if Command::new("code")
+        .arg("--goto")
+        .arg(&goto)
+        .spawn()
+        .is_ok()
+    {
         return Ok(path.display().to_string());
     }
     #[cfg(target_os = "windows")]
@@ -836,7 +909,14 @@ fn create_node(
     if let Some(p) = parent {
         patch.attributes.insert("parent".into(), p);
     }
-    let op = build_op(&s.store, &doc_id, OperationType::Create, Some(target.clone()), Some(patch), "UI create")?;
+    let op = build_op(
+        &s.store,
+        &doc_id,
+        OperationType::Create,
+        Some(target.clone()),
+        Some(patch),
+        "UI create",
+    )?;
     let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
     s.package.manifest.set_revision(out.revision.as_str());
     Ok(target.as_str().to_owned())
@@ -848,7 +928,14 @@ fn delete_node(state: tauri::State<'_, AppState>, target: String) -> Result<Stri
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
     let target_id = NodeId::from_validated(&target);
-    let op = build_op(&s.store, &doc_id, OperationType::Delete, Some(target_id), None, "UI delete")?;
+    let op = build_op(
+        &s.store,
+        &doc_id,
+        OperationType::Delete,
+        Some(target_id),
+        None,
+        "UI delete",
+    )?;
     let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
     s.package.manifest.set_revision(out.revision.as_str());
     Ok(out.revision.as_str().to_owned())
@@ -949,7 +1036,10 @@ struct ChangeDto {
 }
 
 #[tauri::command]
-fn list_changes(state: tauri::State<'_, AppState>, rev_id: String) -> Result<Vec<ChangeDto>, String> {
+fn list_changes(
+    state: tauri::State<'_, AppState>,
+    rev_id: String,
+) -> Result<Vec<ChangeDto>, String> {
     let g = state.inner.lock().unwrap();
     let s = g.as_ref().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
@@ -990,9 +1080,15 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
     aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
     let relations = crud::list_relations(s.store.conn(), &doc_id).map_err(err)?;
     let branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
-    Ok(aidoc::exporter::export(aidoc::ExportFormat::Html, &aidoc::ExportInput {
-        doc: &doc, nodes: &nodes, relations: &relations, branch: branch.as_deref(),
-    }))
+    Ok(aidoc::exporter::export(
+        aidoc::ExportFormat::Html,
+        &aidoc::ExportInput {
+            doc: &doc,
+            nodes: &nodes,
+            relations: &relations,
+            branch: branch.as_deref(),
+        },
+    ))
 }
 
 #[tauri::command]
@@ -1006,9 +1102,27 @@ fn export_markdown(state: tauri::State<'_, AppState>) -> Result<String, String> 
     let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
     aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
     let relations = crud::list_relations(s.store.conn(), &doc_id).map_err(err)?;
-    Ok(aidoc::exporter::export(aidoc::ExportFormat::Markdown, &aidoc::ExportInput {
-        doc: &doc, nodes: &nodes, relations: &relations, branch: None,
-    }))
+    Ok(aidoc::exporter::export(
+        aidoc::ExportFormat::Markdown,
+        &aidoc::ExportInput {
+            doc: &doc,
+            nodes: &nodes,
+            relations: &relations,
+            branch: None,
+        },
+    ))
+}
+
+#[tauri::command]
+fn save_export_html(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
+    let output = export_html(state)?;
+    std::fs::write(path, output).map_err(err)
+}
+
+#[tauri::command]
+fn save_export_markdown(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
+    let output = export_markdown(state)?;
+    std::fs::write(path, output).map_err(err)
 }
 
 #[tauri::command]
@@ -1157,7 +1271,14 @@ fn create_link(
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
-    let op = relation_op(&s.store, &doc_id, OperationType::Link, &source, &target, "UI link")?;
+    let op = relation_op(
+        &s.store,
+        &doc_id,
+        OperationType::Link,
+        &source,
+        &target,
+        "UI link",
+    )?;
     let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
     s.package.manifest.set_revision(out.revision.as_str());
     Ok(out.revision.as_str().to_owned())
@@ -1172,7 +1293,14 @@ fn delete_link(
     let mut g = state.inner.lock().unwrap();
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
     let doc_id = s.package.manifest.document.id.clone();
-    let op = relation_op(&s.store, &doc_id, OperationType::Unlink, &source, &target, "UI unlink")?;
+    let op = relation_op(
+        &s.store,
+        &doc_id,
+        OperationType::Unlink,
+        &source,
+        &target,
+        "UI unlink",
+    )?;
     let out = apply_operation(&mut s.store, &doc_id, op).map_err(err)?;
     s.package.manifest.set_revision(out.revision.as_str());
     Ok(out.revision.as_str().to_owned())
@@ -1225,11 +1353,13 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
             }
         }
     }
+    let current_branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
     let main_head = aidoc::branch_head(&s.store, &doc_id, "main").ok();
     let mut out = vec![BranchDto {
         name: "main".into(),
         head: main_head,
         revisions: main_count,
+        current: current_branch.is_none(),
     }];
     let mut names: Vec<&String> = named.keys().collect();
     names.sort_unstable();
@@ -1239,6 +1369,7 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
             name: name.clone(),
             head: aidoc::branch_head(&s.store, &doc_id, name).ok(),
             revisions: *count,
+            current: current_branch.as_deref() == Some(name.as_str()),
         });
     }
     Ok(out)
@@ -1253,7 +1384,10 @@ fn create_branch(state: tauri::State<'_, AppState>, name: String) -> Result<Stri
     let mut patch = Patch::default();
     patch.attributes.insert("branch".into(), name.clone());
     let op = Operation {
-        id: OpId::new(format!("OP-branch-{}", chrono::Utc::now().timestamp_millis())),
+        id: OpId::new(format!(
+            "OP-branch-{}",
+            chrono::Utc::now().timestamp_millis()
+        )),
         op_type: OperationType::Branch,
         target: None,
         expected_revision: RevisionId::new(head),
@@ -1386,6 +1520,8 @@ pub fn run() {
             revert,
             export_html,
             export_markdown,
+            save_export_html,
+            save_export_markdown,
             validate_aidoc,
             create_node,
             delete_node,
@@ -1436,7 +1572,10 @@ mod tests {
         drop(package);
         drop(store);
         let (reopened, _store) = open_package(&target).unwrap();
-        assert_eq!(std::fs::read(reopened.workspace_path().join(relative)).unwrap(), bytes);
+        assert_eq!(
+            std::fs::read(reopened.workspace_path().join(relative)).unwrap(),
+            bytes
+        );
     }
 
     #[test]
@@ -1446,9 +1585,16 @@ mod tests {
         let source = dir.path().join("src/main.rs");
         std::fs::create_dir_all(source.parent().unwrap()).unwrap();
         std::fs::write(&source, "fn main() {}\n").unwrap();
-        assert_eq!(resolve_code_ref(&package, "src/main.rs").unwrap(), source.canonicalize().unwrap());
-        assert!(resolve_code_ref(&package, "../secret.txt").unwrap_err().contains("may not contain"));
-        assert!(resolve_code_ref(&package, "missing.rs").unwrap_err().contains("not found"));
+        assert_eq!(
+            resolve_code_ref(&package, "src/main.rs").unwrap(),
+            source.canonicalize().unwrap()
+        );
+        assert!(resolve_code_ref(&package, "../secret.txt")
+            .unwrap_err()
+            .contains("may not contain"));
+        assert!(resolve_code_ref(&package, "missing.rs")
+            .unwrap_err()
+            .contains("not found"));
     }
 
     #[test]
@@ -1459,15 +1605,30 @@ mod tests {
         let (first_package, first_store) = create_package(&first, "first", "First").unwrap();
         let (second_package, second_store) = create_package(&second, "second", "Second").unwrap();
         let mut workspace = WorkspaceState::default();
-        workspace.sessions.push(SessionHandle { store: first_store, package: first_package });
-        workspace.sessions.push(SessionHandle { store: second_store, package: second_package });
-        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "second");
+        workspace.sessions.push(SessionHandle {
+            store: first_store,
+            package: first_package,
+        });
+        workspace.sessions.push(SessionHandle {
+            store: second_store,
+            package: second_package,
+        });
+        assert_eq!(
+            workspace.as_ref().unwrap().package.manifest.document.id,
+            "second"
+        );
         workspace.activate(&first).unwrap();
-        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "first");
+        assert_eq!(
+            workspace.as_ref().unwrap().package.manifest.document.id,
+            "first"
+        );
         assert_eq!(workspace.list().len(), 2);
         assert!(workspace.close(Some(&second)));
         assert_eq!(workspace.list().len(), 1);
-        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "first");
+        assert_eq!(
+            workspace.as_ref().unwrap().package.manifest.document.id,
+            "first"
+        );
         assert!(workspace.close(None));
         assert!(workspace.as_ref().is_none());
     }
@@ -1486,17 +1647,28 @@ mod tests {
     #[test]
     fn parse_kind_maps_every_supported_string() {
         let cases: &[(&str, &str)] = &[
-            ("section", "section"), ("paragraph", "paragraph"),
-            ("heading", "heading"), ("list", "list"),
-            ("list-item", "listitem"), ("table", "table"),
-            ("table-row", "tablerow"), ("table-cell", "tablecell"),
-            ("code", "code"), ("blockquote", "blockquote"),
-            ("link", "link"), ("image", "image"),
-            ("diagram", "diagram"), ("code-ref", "coderef"),
-            ("requirement", "requirement"), ("decision", "decision"),
-            ("problem", "problem"), ("solution", "solution"),
-            ("reference", "reference"), ("details", "details"),
-            ("summary", "summary"), ("generic", "generic"),
+            ("section", "section"),
+            ("paragraph", "paragraph"),
+            ("heading", "heading"),
+            ("list", "list"),
+            ("list-item", "listitem"),
+            ("table", "table"),
+            ("table-row", "tablerow"),
+            ("table-cell", "tablecell"),
+            ("code", "code"),
+            ("blockquote", "blockquote"),
+            ("link", "link"),
+            ("image", "image"),
+            ("diagram", "diagram"),
+            ("code-ref", "coderef"),
+            ("requirement", "requirement"),
+            ("decision", "decision"),
+            ("problem", "problem"),
+            ("solution", "solution"),
+            ("reference", "reference"),
+            ("details", "details"),
+            ("summary", "summary"),
+            ("generic", "generic"),
         ];
         for (input, expected_dbg) in cases {
             let kind = parse_kind(input).unwrap_or_else(|e| panic!("{input}: {e}"));
@@ -1513,11 +1685,18 @@ mod tests {
     #[test]
     fn resolve_mcp_bin_prefers_env_var() {
         let bogus = PathBuf::from("Z:/definitely/does/not/exist/aidoc-mcp.exe");
-        unsafe { std::env::set_var("AIDOC_MCP_BIN", &bogus); }
+        unsafe {
+            std::env::set_var("AIDOC_MCP_BIN", &bogus);
+        }
         let result = resolve_mcp_bin();
-        unsafe { std::env::remove_var("AIDOC_MCP_BIN"); }
+        unsafe {
+            std::env::remove_var("AIDOC_MCP_BIN");
+        }
         if let Some(p) = result {
-            assert_ne!(p, bogus, "must not honour an env var pointing at a missing file");
+            assert_ne!(
+                p, bogus,
+                "must not honour an env var pointing at a missing file"
+            );
         }
     }
 
@@ -1538,7 +1717,10 @@ mod tests {
             }),
             "test reason",
         );
-        assert!(r.is_err(), "build_op must surface missing head as Err, not panic");
+        assert!(
+            r.is_err(),
+            "build_op must surface missing head as Err, not panic"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1555,11 +1737,19 @@ mod tests {
     #[test]
     fn node_to_dto_propagates_attributes() {
         let mut n = Node::new(NodeId::from_validated("child"), NodeKind::Section);
-        n.attributes.insert("parent".to_string(), "root".to_string());
-        n.attributes.insert("anchor".to_string(), "intro".to_string());
+        n.attributes
+            .insert("parent".to_string(), "root".to_string());
+        n.attributes
+            .insert("anchor".to_string(), "intro".to_string());
         let dto = node_to_dto(n);
-        assert_eq!(dto.attributes.get("parent").map(String::as_str), Some("root"));
-        assert_eq!(dto.attributes.get("anchor").map(String::as_str), Some("intro"));
+        assert_eq!(
+            dto.attributes.get("parent").map(String::as_str),
+            Some("root")
+        );
+        assert_eq!(
+            dto.attributes.get("anchor").map(String::as_str),
+            Some("intro")
+        );
     }
 
     #[test]
@@ -1568,8 +1758,7 @@ mod tests {
         let db = dir.join("doc.db");
         let mut store = Store::open(&db).expect("open store");
         seed_root(&mut store, "doc-x", "Hello").expect("seed");
-        let nodes = aidoc_storage::crud::list_nodes(store.conn(), "doc-x")
-            .expect("list nodes");
+        let nodes = aidoc_storage::crud::list_nodes(store.conn(), "doc-x").expect("list nodes");
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id.as_str(), "root");
         assert_eq!(nodes[0].content, "Hello");
@@ -1633,9 +1822,13 @@ mod tests {
         }
         // And style-src should still allow inline so React / mermaid keep
         // working without us re-hashing every emitted style.
-        assert!(csp.contains("style-src"), "csp must declare style-src: {csp}");
         assert!(
-            csp.split(';').any(|d| d.trim().starts_with("style-src") && d.contains("'unsafe-inline'")),
+            csp.contains("style-src"),
+            "csp must declare style-src: {csp}"
+        );
+        assert!(
+            csp.split(';')
+                .any(|d| d.trim().starts_with("style-src") && d.contains("'unsafe-inline'")),
             "style-src must still allow inline styles: {csp}",
         );
     }

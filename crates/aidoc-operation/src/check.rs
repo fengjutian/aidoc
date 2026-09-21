@@ -102,10 +102,11 @@ pub fn check_conflict(store: &Store, doc_id: &str, op: &Operation) -> Result<(),
     }
 
     match op.op_type {
-        OperationType::Create | OperationType::Update | OperationType::Move
-        | OperationType::Rename | OperationType::Replace => {
-            check_move_structure(store, doc_id, op)?
-        }
+        OperationType::Create
+        | OperationType::Update
+        | OperationType::Move
+        | OperationType::Rename
+        | OperationType::Replace => check_move_structure(store, doc_id, op)?,
         OperationType::Link | OperationType::Unlink => check_relation(store, doc_id, op)?,
         _ => {}
     }

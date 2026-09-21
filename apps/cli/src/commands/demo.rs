@@ -1,4 +1,4 @@
-﻿//! Demo: runs the full create → update → revert loop on a brand-new file
+//! Demo: runs the full create → update → revert loop on a brand-new file
 //! and dumps the resulting HTML.
 //!
 //! `aidoc demo path/to/foo.aidoc --export-html foo.html`
@@ -60,8 +60,8 @@ pub fn run(path: &str, export_html: Option<&str>) -> Result<()> {
         targets: vec![],
         actor: Provenance::human(Some("demo".into())),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: Some("系统采用微服务架构。".into()),
             ..Default::default()
         }),
@@ -82,8 +82,8 @@ pub fn run(path: &str, export_html: Option<&str>) -> Result<()> {
         targets: vec![],
         actor: Provenance::ai("document-agent".to_string(), Some("MiniMax-M3".to_string())),
         patch: Some(Patch {
-                kind: None,
-                position: None,
+            kind: None,
+            position: None,
             content: Some("系统采用微服务架构，包含订单、库存、支付三个核心服务。".into()),
             ..Default::default()
         }),

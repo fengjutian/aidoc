@@ -17,6 +17,7 @@ interface BranchRow {
   name: string;
   head: string | null;
   revisions: number;
+  current: boolean;
 }
 
 interface BranchDialogProps {
@@ -217,6 +218,11 @@ function BranchRowView({ branch, busy, onCheckout, onMerge }: BranchRowProps) {
               main
             </span>
           )}
+          {branch.current && (
+            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600">
+              current
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
           <span>
@@ -230,8 +236,9 @@ function BranchRowView({ branch, busy, onCheckout, onMerge }: BranchRowProps) {
           )}
         </div>
       </div>
-      <Button size="sm" variant="outline" onClick={onCheckout} disabled={busy !== null}>
-        Checkout
+      <Button size="sm" variant="outline" onClick={onCheckout} disabled={busy !== null || branch.current}>
+        {busy === `checkout:${branch.name}` && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+        {branch.current ? "Checked out" : "Checkout"}
       </Button>
       {!isMain && (
         <Button
