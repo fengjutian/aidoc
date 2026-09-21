@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Code2, Copy, ExternalLink, FileCode, Loader2 } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { Code2, Copy, ExternalLink, FileCode, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -47,13 +48,27 @@ export function CodeRefEditor({ content, attributes, onChange, onAttributesChang
       setOpening(false);
     }
   };
+  const pickSource = async () => {
+    setError(null);
+    try {
+      const picked = await openDialog({ multiple: false, directory: false });
+      if (typeof picked !== "string") return;
+      setSource(picked);
+      onAttributesChange({ ...attributes, source: picked, line });
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   return <div className="flex h-full min-h-[260px] flex-col gap-4 p-3">
     <div className="flex items-center gap-2 text-sm"><Code2 className="h-4 w-4 text-indigo-500" /><span className="font-medium">Code reference</span><span className="text-xs text-muted-foreground">{source || line ? "—" : "no source set"}</span></div>
     <div className="grid grid-cols-[100px_1fr_auto] items-center gap-2 text-sm">
       <label className="text-xs uppercase tracking-wider text-muted-foreground">source</label>
       <input className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring" placeholder="path/to/file.py" value={source} onChange={(e) => setSource(e.target.value)} onBlur={saveAttributes} />
-      <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Copy source path" disabled={!source} onClick={() => void copy("source", source)}><Copy className="h-3.5 w-3.5" /></Button>
+      <div className="flex gap-1">
+        <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Choose source file" onClick={() => void pickSource()}><FolderOpen className="h-3.5 w-3.5" /></Button>
+        <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Copy source path" disabled={!source} onClick={() => void copy("source", source)}><Copy className="h-3.5 w-3.5" /></Button>
+      </div>
       <label className="text-xs uppercase tracking-wider text-muted-foreground">line</label>
       <input className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-sm shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-ring" placeholder="42" inputMode="numeric" value={line} onChange={(e) => setLine(e.target.value)} onBlur={saveAttributes} />
       <Button type="button" variant="outline" size="icon" className="h-9 w-9" aria-label="Copy line number" disabled={!line} onClick={() => void copy("line", line)}><Copy className="h-3.5 w-3.5" /></Button>

@@ -166,3 +166,41 @@ fn create_update_revert_loop() {
         "expected conflict error, got: {msg}"
     );
 }
+
+#[test]
+fn empty_attribute_value_removes_existing_attribute() {
+    let mut store = setup();
+    let mut add = Patch::default();
+    add.attributes.insert("language".into(), "rust".into());
+    let first = apply_operation(&mut store, doc_id(), Operation {
+        id: OpId::new("OP-ATTR-1"),
+        op_type: OperationType::Update,
+        target: Some(NodeId::from_validated("root")),
+        expected_revision: RevisionId::new("R000"),
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![],
+        actor: Provenance::human(None),
+        patch: Some(add),
+        reason: Some("add attribute".into()),
+    }).expect("add attribute");
+
+    let mut remove = Patch::default();
+    remove.attributes.insert("language".into(), String::new());
+    apply_operation(&mut store, doc_id(), Operation {
+        id: OpId::new("OP-ATTR-2"),
+        op_type: OperationType::Update,
+        target: Some(NodeId::from_validated("root")),
+        expected_revision: first.revision,
+        expected_hash: None,
+        target_revision: None,
+        targets: vec![],
+        actor: Provenance::human(None),
+        patch: Some(remove),
+        reason: Some("remove attribute".into()),
+    }).expect("remove attribute");
+
+    let node = crud::get_node(store.conn(), doc_id(), &NodeId::from_validated("root"))
+        .expect("get node").expect("root exists");
+    assert!(!node.attributes.contains_key("language"));
+}

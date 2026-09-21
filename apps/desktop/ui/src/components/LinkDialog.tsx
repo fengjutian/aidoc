@@ -251,17 +251,14 @@ function Section({
           {empty}
         </div>
       ) : (
-        <ul className="space-y-0.5">{items.map(renderItem)}</ul>
-      )}
-      {renderActions && items.length > 0 && (
-        <div className="mt-1 space-y-0.5">
+        <ul className="space-y-0.5">
           {items.map((r) => (
-            <div key={`act-${r.id}`} className="flex items-center gap-1">
-              <div className="flex-1" />
-              {renderActions(r)}
-            </div>
+            <li key={r.id} className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">{renderItem(r)}</div>
+              {renderActions?.(r)}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

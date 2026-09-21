@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { Settings } from "@/hooks/useSettings";
+import { resolveProviderDefaults, type Settings } from "@/hooks/useSettings";
 
 interface AiChatProps {
   open: boolean;
@@ -230,6 +230,12 @@ export function AiChat({
       await invoke<boolean>("abort_ai_chat");
     } catch {
       /* ignore */
+    } finally {
+      setPending(false);
+      setHistory((turns) => {
+        const last = turns.at(-1);
+        return last?.role === "assistant" && !last.content ? turns.slice(0, -1) : turns;
+      });
     }
   };
 
@@ -249,6 +255,7 @@ export function AiChat({
     let acc = "";
 
     try {
+      const provider = resolveProviderDefaults(settings);
       const chunkUn = await listen<string>("ai-chunk", (e) => {
         acc += e.payload;
         setHistory((h) => {
@@ -296,9 +303,9 @@ export function AiChat({
 
       await invoke("ai_chat", {
         prompt: text,
-        apiKey: settings.openaiApiKey,
-        baseUrl: settings.openaiBaseUrl,
-        model: settings.openaiModel,
+        apiKey: settings.aiProvider === "ollama" ? (settings.openaiApiKey || "ollama") : settings.openaiApiKey,
+        baseUrl: provider.baseUrl,
+        model: provider.model,
         docPath,
         history: prior,
       });
@@ -306,18 +313,22 @@ export function AiChat({
       // listeners above flip `pending` to false.
     } catch (e) {
       cleanupListeners();
-      setHistory((h) => [...h, { role: "error", content: String(e) }]);
+      setHistory((h) => {
+        const withoutEmpty = h.at(-1)?.role === "assistant" && !h.at(-1)?.content ? h.slice(0, -1) : h;
+        return [...withoutEmpty, { role: "error", content: String(e) }];
+      });
+      setPending(false);
     }
   };
 
   // Drop listeners when the dialog closes so we don't leak handlers.
   useEffect(() => {
     if (!open) {
-      cleanupListeners();
-      setPending(false);
+      if (pending) void abort();
+      else cleanupListeners();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, pending]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -467,7 +478,7 @@ export function AiChat({
               }
             }}
             placeholder={
-              settings.openaiApiKey
+              settings.aiProvider === "ollama" || settings.openaiApiKey
                 ? "Ask anything about this document…"
                 : "Set OPENAI_API_KEY in Settings first."
             }

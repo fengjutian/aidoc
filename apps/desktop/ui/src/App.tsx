@@ -135,6 +135,7 @@ export default function App() {
   // and-forth conversation only produces one revision.
   const aiHistoryTimer = useRef<number | null>(null);
   const aiHistoryDocPath = useRef<string | null>(null);
+  const aiHistoryNodeExists = useRef(false);
   useEffect(() => {
     if (!info || aiHistoryDocPath.current !== info.source_path) return;
     if (aiHistoryTimer.current !== null) {
@@ -146,7 +147,7 @@ export default function App() {
         // Always create-or-update via attributes so we don't fight the nodes
         // list ordering. set_node_attributes accepts both an existing target
         // and will create-then-update on the first run via create_node.
-        const exists = nodes.some((n) => n.id === "__ai_history__");
+        const exists = aiHistoryNodeExists.current;
         if (exists) {
           await invoke<string>("set_node_attributes", {
             target: "__ai_history__",
@@ -162,6 +163,7 @@ export default function App() {
             target: "__ai_history__",
             attrs: { history: json },
           });
+          aiHistoryNodeExists.current = true;
         }
       } catch {
         // Silently swallow — the user will notice their next send fails
@@ -197,13 +199,16 @@ export default function App() {
         invoke<Info[]>("list_documents"),
       ]);
       if (epoch !== refreshEpoch.current) return;
-      setNodes(n);
+      // Internal metadata nodes belong to the document package, not the
+      // author-facing outline.
+      setNodes(n.filter((node) => !node.id.startsWith("__")));
       setRevs(r);
       setRelations(rel);
       setTabs(docs);
       aiHistoryDocPath.current = docs.at(-1)?.source_path ?? null;
       // Load AI chat history from a dedicated metadata node.
       const histNode = n.find((x) => x.id === "__ai_history__");
+      aiHistoryNodeExists.current = !!histNode;
       if (histNode?.attributes?.history) {
         try {
           const parsed = JSON.parse(histNode.attributes.history);

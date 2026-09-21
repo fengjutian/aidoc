@@ -573,6 +573,8 @@ fn apply_patch_to_node(node: &mut Node, patch: &Patch) {
             } else {
                 Some(NodeId::from_validated(v.clone()))
             };
+        } else if v.is_empty() {
+            node.attributes.remove(k);
         } else {
             node.attributes.insert(k.clone(), v.clone());
         }

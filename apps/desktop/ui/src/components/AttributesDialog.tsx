@@ -41,6 +41,10 @@ function recordFromRows(rows: Row[]): Record<string, string> {
   return out;
 }
 
+function stableRecord(rec: Record<string, string>): string {
+  return JSON.stringify(Object.entries(rec).sort(([a], [b]) => a.localeCompare(b)));
+}
+
 export function AttributesDialog({
   open,
   onOpenChange,
@@ -67,6 +71,10 @@ export function AttributesDialog({
   const save = async () => {
     if (!nodeId) return;
     const attrs = recordFromRows(rows);
+    // Attribute patches use an empty value as the deletion marker.
+    for (const key of Object.keys(initial)) {
+      if (!(key in attrs)) attrs[key] = "";
+    }
     setBusy(true);
     setError(null);
     try {
@@ -80,9 +88,10 @@ export function AttributesDialog({
     }
   };
 
-  const dirty =
-    JSON.stringify(recordFromRows(rows)) !== JSON.stringify(initial ?? {});
+  const dirty = stableRecord(recordFromRows(rows)) !== stableRecord(initial ?? {});
   const hasBlankKey = rows.some((r) => !r.key.trim());
+  const normalizedKeys = rows.map((r) => r.key.trim()).filter(Boolean);
+  const hasDuplicateKey = new Set(normalizedKeys).size !== normalizedKeys.length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -143,6 +152,9 @@ export function AttributesDialog({
             {error && (
               <div className="mt-3 text-xs text-destructive">{error}</div>
             )}
+            {hasDuplicateKey && (
+              <div className="mt-3 text-xs text-destructive">Attribute keys must be unique.</div>
+            )}
           </div>
         </ScrollArea>
 
@@ -158,7 +170,7 @@ export function AttributesDialog({
             <Button
               size="sm"
               onClick={() => void save()}
-              disabled={!dirty || busy || hasBlankKey}
+              disabled={!dirty || busy || hasBlankKey || hasDuplicateKey}
             >
               {busy ? (
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
