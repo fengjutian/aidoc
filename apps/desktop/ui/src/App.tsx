@@ -90,6 +90,16 @@ interface RelationRow {
   kind: string;
 }
 
+function isMissingFileError(error: unknown): boolean {
+  const message = String(error).toLowerCase();
+  return (
+    message.includes("os error 2") ||
+    message.includes("not found") ||
+    message.includes("cannot find the file") ||
+    message.includes("找不到指定的文件")
+  );
+}
+
 export default function App() {
   const theme = useTheme();
   const { settings, update: updateSettings } = useSettings();
@@ -426,7 +436,12 @@ export default function App() {
       setDocPath(path);
       addOpened(path);
     } catch (e) {
-      setError(String(e));
+      if (isMissingFileError(e)) {
+        removeRecent(path);
+        setError(null);
+      } else {
+        setError(String(e));
+      }
     }
   };
 
