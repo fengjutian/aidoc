@@ -343,6 +343,7 @@ mod tests {
             target: target.id.clone(),
             kind: RelationKind::References,
             custom_kind: None,
+            attributes: Default::default(),
         };
         let out = export(
             ExportFormat::Markdown,

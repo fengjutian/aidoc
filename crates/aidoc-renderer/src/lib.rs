@@ -554,6 +554,7 @@ mod tests {
             target: target.id.clone(),
             kind: RelationKind::DependsOn,
             custom_kind: None,
+            attributes: Default::default(),
         };
         let html = render_html(&doc, &[root.clone(), target], &[relation], None);
         assert!(html.contains("→ depends-on"));

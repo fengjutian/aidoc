@@ -404,6 +404,7 @@ impl OperationHandler for LinkHandler {
             target: link_dst.clone(),
             kind: RelationKind::References,
             custom_kind: None,
+            attributes: Default::default(),
         };
         ctx.insert_relation(&rel)?;
         ctx.record_change(

@@ -162,6 +162,21 @@ async fn mcp_handshake_and_init_aidoc() {
             "missing tool {required} (have {names:?})"
         );
     }
+    let apply_tool = tools_resp["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "apply_operation")
+        .expect("apply_operation tool");
+    assert_eq!(
+        apply_tool["inputSchema"]["required"],
+        json!(["op_json"]),
+        "AI clients need an explicit operation argument contract"
+    );
+    assert_eq!(
+        apply_tool["inputSchema"]["properties"]["op_json"]["properties"]["expected_revision"]["type"],
+        "string"
+    );
 
     // 3. tools/call init_aidoc
     let pkg_path_str = pkg_path.to_string_lossy().to_string();

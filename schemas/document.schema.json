@@ -54,7 +54,7 @@
         "target": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
         "custom_kind": { "type": ["string", "null"] },
-        "attributes": { "type": "object", "additionalProperties": true }
+        "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
       },
       "additionalProperties": true
     }

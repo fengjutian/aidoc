@@ -1,10 +1,11 @@
 //! Semantic relation between nodes (spec §14-§15).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::id::NodeId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelationKind {
     References,
@@ -58,7 +59,7 @@ impl RelationKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Relation {
     pub id: String,
     pub source: NodeId,
@@ -66,4 +67,7 @@ pub struct Relation {
     pub kind: RelationKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_kind: Option<String>,
+    /// Portable relation metadata (confidence, source location, role, etc.).
+    #[serde(default, skip_serializing_if = "indexmap::IndexMap::is_empty")]
+    pub attributes: indexmap::IndexMap<String, String>,
 }

@@ -88,6 +88,7 @@ fn relation_validator_rejects_unknown_target() {
         target: NodeId::from_validated("ghost"),
         kind: RelationKind::References,
         custom_kind: None,
+        attributes: Default::default(),
     };
     store
         .tx::<_, _, AnyhowErr>(|tx| {

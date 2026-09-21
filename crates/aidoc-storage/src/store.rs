@@ -73,6 +73,21 @@ impl Store {
 
         conn.execute_batch(DDL)?;
 
+        // Additive v0.2 migration for packages created by v0.1.
+        let has_relation_attributes = {
+            let mut stmt = conn.prepare("PRAGMA table_info(relations)")?;
+            let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            columns
+                .filter_map(Result::ok)
+                .any(|name| name == "attributes")
+        };
+        if !has_relation_attributes {
+            conn.execute(
+                "ALTER TABLE relations ADD COLUMN attributes TEXT NOT NULL DEFAULT '{}'",
+                [],
+            )?;
+        }
+
         // Schema version bookkeeping.
         conn.execute(
             "INSERT OR IGNORE INTO schema_meta(key, value) VALUES('schema_version', ?1)",

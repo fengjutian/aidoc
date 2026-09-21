@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS relations (
     target      TEXT NOT NULL,
     kind        TEXT NOT NULL,
     custom_kind TEXT,
+    attributes  TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (doc_id, id),
     FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
 );

@@ -280,15 +280,16 @@ pub fn insert_relation(
     rel: &Relation,
 ) -> Result<(), StoreError> {
     tx.execute(
-        r#"INSERT INTO relations(doc_id, id, source, target, kind, custom_kind)
-           VALUES(?1, ?2, ?3, ?4, ?5, ?6)"#,
+        r#"INSERT INTO relations(doc_id, id, source, target, kind, custom_kind, attributes)
+           VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
         rusqlite::params![
             doc_id,
             rel.id,
             rel.source.as_str(),
             rel.target.as_str(),
             relation_kind_to_str(rel.kind),
-            rel.custom_kind
+            rel.custom_kind,
+            serde_json::to_string(&rel.attributes)?
         ],
     )?;
     Ok(())
@@ -303,8 +304,9 @@ pub fn delete_relation(tx: &Transaction<'_>, doc_id: &str, rel_id: &str) -> Resu
 }
 
 pub fn list_relations(conn: &Connection, doc_id: &str) -> Result<Vec<Relation>, StoreError> {
-    let mut stmt = conn
-        .prepare("SELECT id, source, target, kind, custom_kind FROM relations WHERE doc_id = ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, source, target, kind, custom_kind, attributes FROM relations WHERE doc_id = ?1",
+    )?;
     let mut out = Vec::new();
     let mut rows = stmt.query([doc_id])?;
     while let Some(r) = rows.next()? {
@@ -321,6 +323,7 @@ pub fn list_relations(conn: &Connection, doc_id: &str) -> Result<Vec<Relation>, 
             target: NodeId::from_validated(r.get::<_, String>(2)?),
             kind,
             custom_kind: custom,
+            attributes: serde_json::from_str(&r.get::<_, String>(5)?)?,
         });
     }
     Ok(out)
