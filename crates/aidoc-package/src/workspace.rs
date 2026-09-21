@@ -107,8 +107,12 @@ pub fn create_package(
 }
 
 /// Save the current workspace back to its source `.aidoc` ZIP.
-pub fn save_package(pkg: &mut Package, _store: &Store) -> Result<(), PackageError> {
-    pkg.manifest.touch_updated();
+pub fn save_package(pkg: &mut Package, store: &Store) -> Result<(), PackageError> {
+    if let Some(head) = aidoc_storage::crud::head_revision(store.conn(), &pkg.manifest.document.id)? {
+        pkg.manifest.set_revision(head);
+    } else {
+        pkg.manifest.touch_updated();
+    }
     std::fs::write(
         pkg.workspace.path().join("manifest.json"),
         serde_json::to_string_pretty(&pkg.manifest)?,

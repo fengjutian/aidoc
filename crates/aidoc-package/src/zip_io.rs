@@ -34,7 +34,11 @@ pub fn pack_zip(src_dir: &Path, zip_path: &Path) -> io::Result<()> {
     if let Some(parent) = zip_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let file = File::create(zip_path)?;
+    // Build beside the destination so a failed write never truncates the
+    // existing package and the final rename stays on the same filesystem.
+    let parent = zip_path.parent().unwrap_or_else(|| Path::new("."));
+    let file = tempfile::NamedTempFile::new_in(parent)?;
+    let (file, temp_path) = file.keep().map_err(|e| e.error)?;
     let mut zip = ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -57,5 +61,6 @@ pub fn pack_zip(src_dir: &Path, zip_path: &Path) -> io::Result<()> {
         zip.write_all(&buf)?;
     }
     zip.finish()?;
+    std::fs::rename(temp_path, zip_path)?;
     Ok(())
 }
