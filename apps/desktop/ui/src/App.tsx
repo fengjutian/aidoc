@@ -16,6 +16,9 @@ import {
   Save,
   Settings as SettingsIcon,
   Keyboard,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sparkles,
   Undo2,
   Search as SearchIcon,
@@ -170,6 +173,8 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NodeRow[] | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(true);
   const refreshEpoch = useRef(0);
 
   const refresh = async () => {
@@ -226,6 +231,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.source_path]);
 
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setActiveId(null);
+      return;
+    }
+    if (!activeId || !nodes.some((node) => node.id === activeId)) {
+      setActiveId(nodes.find((node) => node.id === info?.entry)?.id ?? nodes[0].id);
+    }
+  }, [nodes, activeId, info?.entry]);
+
   // Auto-restore the most-recently-opened .aidoc on first paint, if the file
   // still exists. Failed attempts (missing / moved files) fall through to
   // the welcome screen with no error — user can pick from the Recent list.
@@ -242,8 +257,8 @@ export default function App() {
         setTabs([i]);
         setDocPath(last);
       } catch {
-        // File moved / deleted. Drop it from recents silently.
-        removeRecent(last);
+        // Keep the record. The file may only be temporarily unavailable;
+        // recent history is removed exclusively through the Forget button.
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -623,7 +638,7 @@ export default function App() {
               <span className="text-muted-foreground/60">{recent.length}</span>
             </div>
             <ul className="space-y-0.5">
-              {recent.slice(0, 5).map((p) => (
+              {recent.map((p) => (
                 <li key={p} className="group flex items-center gap-1 rounded-md hover:bg-accent">
                   <button
                     type="button"
@@ -699,9 +714,18 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
+      <div className="app-shell">
+      <header className="app-header">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}>
+              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{sidebarOpen ? "Hide sidebar" : "Show sidebar"}</TooltipContent>
+        </Tooltip>
         <Sparkles className="h-4 w-4 text-primary" />
-        <h1 className="mr-auto text-sm font-semibold">
+        <h1 className="document-title">
           {info.title}
           <span className="ml-2 font-normal text-muted-foreground">
             · head={info.head_revision}
@@ -709,12 +733,12 @@ export default function App() {
         </h1>
 
         {tabs.length > 0 && (
-          <div className="mr-2 flex items-center gap-1 rounded-md border bg-muted/30 px-1 py-0.5">
+          <div className="document-tabs">
             <span className="px-1 text-[10px] uppercase tracking-wider text-muted-foreground">
               Tabs
             </span>
             {tabs.map((tab) => (
-              <span key={tab.source_path} className={cn("flex items-center rounded px-1", tab.source_path === info.source_path && "bg-background")}>
+              <span key={tab.source_path} className={cn("flex items-center rounded px-1", tab.source_path === info.source_path && "bg-background shadow-sm")}>
                 <button type="button" onClick={() => void activateTab(tab.source_path)} className="max-w-32 truncate px-1 text-xs font-medium" title={tab.source_path}>
                   {tab.title}
                 </button>
@@ -901,8 +925,8 @@ export default function App() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_1fr]">
-        <aside className="flex min-h-0 flex-col border-r bg-muted/30">
+      <div className={cn("workspace", !sidebarOpen && "sidebar-collapsed")}>
+        {sidebarOpen && <aside className="workspace-sidebar">
           <div className="border-b p-2">
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -1018,11 +1042,17 @@ export default function App() {
 
               <Separator className="my-3" />
 
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <button
+                type="button"
+                className="mb-2 flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                onClick={() => setHistoryOpen((open) => !open)}
+                aria-expanded={historyOpen}
+              >
                 <Clock className="h-3.5 w-3.5" />
                 {t("sidebar.history")}
-              </div>
-              <ol className="space-y-1">
+                <span className="ml-auto text-[10px]">{historyOpen ? "−" : "+"}</span>
+              </button>
+              {historyOpen && <ol className="space-y-1">
                 {revs.map((r) => {
                   const isHead = r.id === info.head_revision;
                   return (
@@ -1069,26 +1099,38 @@ export default function App() {
                     </li>
                   );
                 })}
-              </ol>
+              </ol>}
             </div>
           </ScrollArea>
-        </aside>
+        </aside>}
 
         <main className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex-1 overflow-auto p-6">
+          <div className="editor-canvas">
             {active ? (
-              <NodeEditor
-                key={active.id}
-                kind={active.kind as never}
-                content={active.content}
-                attributes={active.attributes}
-                onChange={(html) => onUpdate(active.id, html)}
-                onAttributesChange={(attrs) => void onUpdateAttributes(active.id, attrs)}
-                onKindChange={(kind) => onChangeKind(active.id, kind)}
-              />
+              <section className="editor-surface">
+                <div className="editor-context">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Current node</div>
+                    <div className="truncate text-sm font-medium">{active.id}</div>
+                  </div>
+                  <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{active.kind}</span>
+                </div>
+                <NodeEditor
+                  key={active.id}
+                  kind={active.kind as never}
+                  content={active.content}
+                  attributes={active.attributes}
+                  onChange={(html) => onUpdate(active.id, html)}
+                  onAttributesChange={(attrs) => void onUpdateAttributes(active.id, attrs)}
+                  onKindChange={(kind) => onChangeKind(active.id, kind)}
+                />
+              </section>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Select a node from the tree to edit.
+              <div className="empty-editor">
+                <div className="empty-editor-icon"><FileText className="h-5 w-5" /></div>
+                <strong className="text-sm text-foreground">No node selected</strong>
+                <span className="text-xs text-muted-foreground">Choose a node from the sidebar to start editing.</span>
+                {!sidebarOpen && <Button size="sm" variant="outline" onClick={() => setSidebarOpen(true)}><Menu className="mr-2 h-3.5 w-3.5" />Open sidebar</Button>}
               </div>
             )}
           </div>
@@ -1193,6 +1235,7 @@ export default function App() {
       />
 
       <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      </div>
     </TooltipProvider>
   );
 }

@@ -58,12 +58,140 @@
   #root {
     height: 100%;
   }
-  body {
+body {
     @apply bg-background text-foreground antialiased;
     margin: 0;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
       "Helvetica Neue", sans-serif;
   }
+}
+
+/* ---------------- Application workspace ---------------- */
+
+.app-shell {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 75% 0%, hsl(var(--accent) / 0.16), transparent 32rem),
+    hsl(var(--background));
+}
+
+.app-header {
+  display: flex;
+  height: 3.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0 0.75rem;
+  background: hsl(var(--background) / 0.92);
+  backdrop-filter: blur(14px);
+  z-index: 20;
+}
+
+.document-title {
+  min-width: 8rem;
+  max-width: 22rem;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.document-tabs {
+  display: flex;
+  max-width: 28rem;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 0.125rem 0.25rem;
+  background: hsl(var(--muted) / 0.45);
+  scrollbar-width: none;
+}
+
+.workspace {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: clamp(15.5rem, 20vw, 19rem) minmax(0, 1fr);
+}
+
+.workspace.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+
+.workspace-sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 0.58);
+}
+
+.editor-canvas {
+  flex: 1;
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 2.5rem);
+}
+
+.editor-surface {
+  width: min(100%, 68rem);
+  min-height: min(42rem, calc(100vh - 8.5rem));
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04), 0 14px 40px hsl(var(--foreground) / 0.035);
+}
+
+.editor-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.22);
+}
+
+.empty-editor {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.65rem;
+  text-align: center;
+}
+
+.empty-editor-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--card));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 0.06);
+}
+
+@media (max-width: 1050px) {
+  .document-tabs { display: none; }
+  .document-title { max-width: 14rem; }
+  .app-header { overflow-x: auto; }
+}
+
+@media (max-width: 720px) {
+  .workspace { grid-template-columns: minmax(13rem, 42vw) minmax(0, 1fr); }
+  .editor-canvas { padding: 0.75rem; }
+  .editor-surface { min-height: calc(100vh - 5rem); }
 }
 
 /* ---------------- Tiptap rich editor ---------------- */
@@ -72,12 +200,13 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 34rem;
 }
 
 .aidoc-rich {
   flex: 1;
   outline: none;
-  padding: 0.75rem 1rem;
+  padding: 1.5rem clamp(1.25rem, 4vw, 3.5rem);
   overflow: auto;
   font-size: var(--editor-font-size, 0.95rem);
   line-height: 1.55;
