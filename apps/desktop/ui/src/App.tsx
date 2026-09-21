@@ -122,8 +122,9 @@ export default function App() {
   // a write to the `__ai_history__` metadata node — coalesced so a fast back-
   // and-forth conversation only produces one revision.
   const aiHistoryTimer = useRef<number | null>(null);
+  const aiHistoryDocPath = useRef<string | null>(null);
   useEffect(() => {
-    if (!info) return;
+    if (!info || aiHistoryDocPath.current !== info.source_path) return;
     if (aiHistoryTimer.current !== null) {
       window.clearTimeout(aiHistoryTimer.current);
     }
@@ -169,9 +170,11 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NodeRow[] | null>(null);
+  const refreshEpoch = useRef(0);
 
   const refresh = async () => {
     if (!info) return;
+    const epoch = refreshEpoch.current;
     try {
       const [n, r, rel, docs] = await Promise.all([
         invoke<NodeRow[]>("list_nodes"),
@@ -179,9 +182,12 @@ export default function App() {
         invoke<RelationRow[]>("list_relations"),
         invoke<Info[]>("list_documents"),
       ]);
+      if (epoch !== refreshEpoch.current) return;
       setNodes(n);
       setRevs(r);
       setRelations(rel);
+      setTabs(docs);
+      aiHistoryDocPath.current = docs.at(-1)?.source_path ?? null;
       // Load AI chat history from a dedicated metadata node.
       const histNode = n.find((x) => x.id === "__ai_history__");
       if (histNode?.attributes?.history) {
@@ -209,7 +215,7 @@ export default function App() {
       } else {
         setAiHistory([]);
       }
-      setInfo((prev) => docs[0] ?? prev);
+      setInfo((prev) => docs.at(-1) ?? prev);
     } catch (e) {
       setError(String(e));
     }
@@ -218,7 +224,7 @@ export default function App() {
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info?.doc_id]);
+  }, [info?.source_path]);
 
   // Auto-restore the most-recently-opened .aidoc on first paint, if the file
   // still exists. Failed attempts (missing / moved files) fall through to
@@ -385,8 +391,9 @@ export default function App() {
         docId: title.toLowerCase().replace(/\s+/g, "-") || "demo",
         title: title || "Untitled",
       });
+      refreshEpoch.current += 1;
       setInfo(i);
-      setTabs([i]);
+      setTabs(await invoke<Info[]>("list_documents"));
       setDocPath(path);
       addOpened(path);
     } catch (e) {
@@ -398,8 +405,9 @@ export default function App() {
     setError(null);
     try {
       const i = await invoke<Info>("open_doc", { path });
+      refreshEpoch.current += 1;
       setInfo(i);
-      setTabs([i]);
+      setTabs(await invoke<Info[]>("list_documents"));
       setDocPath(path);
       addOpened(path);
     } catch (e) {
@@ -496,6 +504,9 @@ export default function App() {
     setSaveState("saving");
     try {
       await invoke("save_doc_as", { path: picked });
+      const docs = await invoke<Info[]>("list_documents");
+      setTabs(docs);
+      setInfo(docs.at(-1) ?? null);
       setDocPath(picked);
       addOpened(picked);
       setLastSavedAt(new Date());
@@ -506,23 +517,43 @@ export default function App() {
     }
   };
 
-  const closeTab = async () => {
-    // Backend holds a single session, so `close_doc` is global. We then
-    // reset everything that depends on it.
+  const activateTab = async (path: string) => {
+    if (info?.source_path === path) return;
     try {
-      await invoke("close_doc");
+      const next = await invoke<Info>("activate_doc", { path });
+      refreshEpoch.current += 1;
+      setNodes([]);
+      setRevs([]);
+      setRelations([]);
+      setActiveId(null);
+      setSearchResults(null);
+      setInfo(next);
+      setDocPath(next.source_path);
+      setTabs(await invoke<Info[]>("list_documents"));
+      setSaveState("never");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const closeTab = async (path: string) => {
+    let remaining: Info[];
+    try {
+      remaining = await invoke<Info[]>("close_doc", { path });
     } catch (e) {
       setError(String(e));
       return;
     }
-    setInfo(null);
-    setTabs([]);
+    setTabs(remaining);
+    if (path !== info?.source_path) return;
+    refreshEpoch.current += 1;
+    const next = remaining.at(-1) ?? null;
+    setInfo(next);
     setNodes([]);
     setRevs([]);
     setRelations([]);
     setActiveId(null);
-    setDocPath(null);
-    setTitle("");
+    setDocPath(next?.source_path ?? null);
     setSaveState("never");
   };
 
@@ -672,22 +703,16 @@ export default function App() {
             <span className="px-1 text-[10px] uppercase tracking-wider text-muted-foreground">
               Tabs
             </span>
-            <span className="rounded bg-background px-2 py-0.5 text-xs font-medium">
-              {tabs[0].title}
-            </span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Close current document"
-                  className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => void closeTab()}
-                >
+            {tabs.map((tab) => (
+              <span key={tab.source_path} className={cn("flex items-center rounded px-1", tab.source_path === info.source_path && "bg-background")}>
+                <button type="button" onClick={() => void activateTab(tab.source_path)} className="max-w-32 truncate px-1 text-xs font-medium" title={tab.source_path}>
+                  {tab.title}
+                </button>
+                <button type="button" aria-label={`Close ${tab.title}`} className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => void closeTab(tab.source_path)}>
                   <XIcon className="h-3 w-3" />
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>Close document (back to welcome)</TooltipContent>
-            </Tooltip>
+              </span>
+            ))}
           </div>
         )}
 
@@ -789,7 +814,9 @@ export default function App() {
                     docId: info?.doc_id ?? "demo",
                     title: info?.title ?? "Untitled",
                   });
+                  refreshEpoch.current += 1;
                   setInfo(i);
+                  setTabs(await invoke<Info[]>("list_documents"));
                   setDocPath(picked);
                 } catch (e) {
                   setError(String(e));
@@ -800,7 +827,7 @@ export default function App() {
               New
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Create a new .aidoc file (current doc will be discarded)</TooltipContent>
+          <TooltipContent>Create a new .aidoc file in another tab</TooltipContent>
         </Tooltip>
 
         <DropdownMenu>

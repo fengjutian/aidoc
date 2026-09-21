@@ -20,7 +20,7 @@ use tauri::{AppHandle, Emitter};
 
 #[derive(Default)]
 struct AppState {
-    inner: Mutex<Option<SessionHandle>>,
+    inner: Mutex<WorkspaceState>,
     /// Slot for the currently-running AI child process. `Arc<Mutex<Option<Child>>>`
     /// so the reader thread can also pull it out for `wait()` while the main
     /// thread keeps a handle for `abort_ai_chat` to kill it.
@@ -30,6 +30,54 @@ struct AppState {
 struct SessionHandle {
     store: Store,
     package: aidoc::Package,
+}
+
+/// The last session is active. Moving an activated tab to the end keeps all
+/// existing active-document commands routed through `as_ref` / `as_mut`.
+#[derive(Default)]
+struct WorkspaceState {
+    sessions: Vec<SessionHandle>,
+}
+
+impl WorkspaceState {
+    fn as_ref(&self) -> Option<&SessionHandle> {
+        self.sessions.last()
+    }
+
+    fn as_mut(&mut self) -> Option<&mut SessionHandle> {
+        self.sessions.last_mut()
+    }
+
+    fn activate(&mut self, path: &std::path::Path) -> Option<&SessionHandle> {
+        let index = self.sessions.iter().position(|s| same_path(&s.package.source_path, path))?;
+        let session = self.sessions.remove(index);
+        self.sessions.push(session);
+        self.as_ref()
+    }
+
+    fn close(&mut self, path: Option<&std::path::Path>) -> bool {
+        let index = match path {
+            Some(path) => self.sessions.iter().position(|s| same_path(&s.package.source_path, path)),
+            None => self.sessions.len().checked_sub(1),
+        };
+        if let Some(index) = index {
+            self.sessions.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn list(&self) -> Vec<InfoDto> {
+        self.sessions.iter().map(|s| read_info(&s.store, &s.package)).collect()
+    }
+}
+
+fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -417,44 +465,53 @@ fn init_doc(
     doc_id: String,
     title: String,
 ) -> Result<InfoDto, String> {
+    if state.inner.lock().unwrap().sessions.iter().any(|s| same_path(&s.package.source_path, std::path::Path::new(&path))) {
+        return Err("document is already open at this path".into());
+    }
     let (package, store) =
         create_package(PathBuf::from(path.clone()), &doc_id, &title).map_err(err)?;
     let mut store = store;
     seed_root(&mut store, &doc_id, &title).map_err(err)?;
     seed_initial_revision(&mut store, &doc_id).map_err(err)?;
     let info = read_info(&store, &package);
-    *state.inner.lock().unwrap() = Some(SessionHandle { store, package });
+    state.inner.lock().unwrap().sessions.push(SessionHandle { store, package });
     Ok(info)
 }
 
 #[tauri::command]
 fn open_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, String> {
+    if let Some(existing) = state.inner.lock().unwrap().activate(std::path::Path::new(&path)) {
+        return Ok(read_info(&existing.store, &existing.package));
+    }
     let mut p = PathBuf::from(path);
     let (package, store) = open_package(&mut p).map_err(err)?;
     let info = read_info(&store, &package);
-    *state.inner.lock().unwrap() = Some(SessionHandle { store, package });
+    state.inner.lock().unwrap().sessions.push(SessionHandle { store, package });
     Ok(info)
 }
 
-/// Snapshot the currently open document(s). For now the desktop holds a
-/// single session at a time, but this returns a list so the UI can grow
-/// into tabs without another command rename.
+/// List all open documents, with the active document last.
 #[tauri::command]
 fn list_documents(state: tauri::State<'_, AppState>) -> Result<Vec<InfoDto>, String> {
     let g = state.inner.lock().unwrap();
-    Ok(match g.as_ref() {
-        Some(s) => vec![read_info(&s.store, &s.package)],
-        None => vec![],
-    })
+    Ok(g.list())
 }
 
-/// Drop the active session. Returns the new active info (or empty list
-/// if the workspace is empty).
 #[tauri::command]
-fn close_doc(state: tauri::State<'_, AppState>) -> Result<Vec<InfoDto>, String> {
+fn activate_doc(state: tauri::State<'_, AppState>, path: String) -> Result<InfoDto, String> {
     let mut g = state.inner.lock().unwrap();
-    *g = None;
-    Ok(vec![])
+    let s = g.activate(std::path::Path::new(&path)).ok_or_else(|| err("document is not open"))?;
+    Ok(read_info(&s.store, &s.package))
+}
+
+/// Close one tab (or the active tab when no path is supplied).
+#[tauri::command]
+fn close_doc(state: tauri::State<'_, AppState>, path: Option<String>) -> Result<Vec<InfoDto>, String> {
+    let mut g = state.inner.lock().unwrap();
+    if !g.close(path.as_deref().map(std::path::Path::new)) {
+        return Err("document is not open".into());
+    }
+    Ok(g.list())
 }
 
 #[tauri::command]
@@ -472,9 +529,16 @@ fn save_doc_as(
     path: String,
 ) -> Result<(), String> {
     let mut g = state.inner.lock().unwrap();
+    if g.sessions.iter().any(|s| same_path(&s.package.source_path, std::path::Path::new(&path))) {
+        return Err("another open document already uses this path".into());
+    }
     let s = g.as_mut().ok_or_else(|| err("no doc open"))?;
-    s.package.source_path = PathBuf::from(path);
-    save_package(&mut s.package, &s.store).map_err(err)
+    let old_path = std::mem::replace(&mut s.package.source_path, PathBuf::from(path));
+    if let Err(e) = save_package(&mut s.package, &s.store) {
+        s.package.source_path = old_path;
+        return Err(err(e));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1203,6 +1267,7 @@ pub fn run() {
             ai_chat,
             abort_ai_chat,
             list_documents,
+            activate_doc,
             close_doc,
         ])
         .run(tauri::generate_context!())
@@ -1212,6 +1277,27 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_keeps_independent_sessions_when_switching_and_closing() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first.aidoc");
+        let second = dir.path().join("second.aidoc");
+        let (first_package, first_store) = create_package(&first, "first", "First").unwrap();
+        let (second_package, second_store) = create_package(&second, "second", "Second").unwrap();
+        let mut workspace = WorkspaceState::default();
+        workspace.sessions.push(SessionHandle { store: first_store, package: first_package });
+        workspace.sessions.push(SessionHandle { store: second_store, package: second_package });
+        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "second");
+        workspace.activate(&first).unwrap();
+        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "first");
+        assert_eq!(workspace.list().len(), 2);
+        assert!(workspace.close(Some(&second)));
+        assert_eq!(workspace.list().len(), 1);
+        assert_eq!(workspace.as_ref().unwrap().package.manifest.document.id, "first");
+        assert!(workspace.close(None));
+        assert!(workspace.as_ref().is_none());
+    }
 
     fn tempdir_in_cwd() -> PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
