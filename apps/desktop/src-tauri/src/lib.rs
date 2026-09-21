@@ -988,12 +988,11 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
         .ok_or_else(|| err("doc missing"))?;
     let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
     aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
+    let relations = crud::list_relations(s.store.conn(), &doc_id).map_err(err)?;
     let branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
-    Ok(aidoc::exporter::export_html(
-        &doc,
-        &nodes,
-        branch.as_deref(),
-    ))
+    Ok(aidoc::exporter::export(aidoc::ExportFormat::Html, &aidoc::ExportInput {
+        doc: &doc, nodes: &nodes, relations: &relations, branch: branch.as_deref(),
+    }))
 }
 
 #[tauri::command]
@@ -1006,7 +1005,10 @@ fn export_markdown(state: tauri::State<'_, AppState>) -> Result<String, String> 
         .ok_or_else(|| err("doc missing"))?;
     let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
     aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
-    Ok(aidoc::exporter::export_markdown(&doc, &nodes))
+    let relations = crud::list_relations(s.store.conn(), &doc_id).map_err(err)?;
+    Ok(aidoc::exporter::export(aidoc::ExportFormat::Markdown, &aidoc::ExportInput {
+        doc: &doc, nodes: &nodes, relations: &relations, branch: None,
+    }))
 }
 
 #[tauri::command]

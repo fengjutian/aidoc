@@ -45,6 +45,9 @@ pub fn render_html(
          .aidoc-branch{background:#eef;border-left:4px solid #88c;\
                        padding:.5em 1em;margin:0 0 1em 0;font-family:monospace}\
          .aidoc-branch::before{content:\"branch: \"}\
+         .aidoc-relations{font-size:.85em;color:#666;border-left:2px solid #ddd;padding:.25em .75em;margin:.4em 0 1em}\
+         .aidoc-relations ul{display:flex;flex-wrap:wrap;gap:.3em 1em;list-style:none;margin:.2em 0;padding:0}\
+         .aidoc-relations a{color:#2563eb;text-decoration:none}.aidoc-relations a:hover{text-decoration:underline}\
          h1,h2,h3,h4,h5,h6{margin-top:1.6em}\
          pre{background:#f0f0f0;padding:.75em 1em;border-radius:4px;overflow:auto}\
          blockquote{border-left:4px solid #ccc;margin:0;padding-left:1em;color:#555}\
@@ -59,6 +62,7 @@ pub fn render_html(
            .aidoc-toc a:hover{color:#60a5fa}\
            .aidoc-diagram{background:#262626}\
            .aidoc-branch{background:#2a2f44;border-left-color:#5b6dab}\
+           .aidoc-relations{color:#aaa;border-left-color:#444}.aidoc-relations a{color:#60a5fa}\
            pre{background:#1e1e1e;color:#d4d4d4}\
            blockquote{border-left-color:#444;color:#aaa}\
            [data-aidoc-type=\"requirement\"]{border-left-color:#3b82f6;background:rgba(59,130,246,.12)}\
@@ -140,6 +144,25 @@ fn build_toc(out: &mut String, parent: &Node, by_parent: &Group<'_>, depth: usiz
         // Forward any pure-nested entries even when this level has none of its own.
         out.push_str(&buf);
     }
+}
+
+fn emit_relations(out: &mut String, node: &Node, all: &[Node], relations: &[Relation], depth: usize) {
+    let relevant: Vec<_> = relations.iter().filter_map(|rel| {
+        let (direction, other) = if rel.source == node.id { ("out", &rel.target) }
+            else if rel.target == node.id { ("in", &rel.source) } else { return None; };
+        let kind = rel.custom_kind.as_deref().filter(|_| rel.kind.as_str() == "custom").unwrap_or(rel.kind.as_str());
+        let label = all.iter().find(|n| n.id == *other).map(|n| n.content.trim())
+            .filter(|s| !s.is_empty()).unwrap_or(other.as_str());
+        Some((direction, kind, other.as_str(), label))
+    }).collect();
+    if relevant.is_empty() { return; }
+    let indent = "  ".repeat(depth);
+    let _ = writeln!(out, "{indent}<aside class=\"aidoc-relations\" aria-label=\"Relations for {}\"><strong>Relations</strong><ul>", escape(node.id.as_str()));
+    for (direction, kind, target, label) in relevant {
+        let arrow = if direction == "out" { "→" } else { "←" };
+        let _ = writeln!(out, "{indent}  <li><span>{arrow} {}</span> <a href=\"#{}\">{}</a></li>", escape(kind), escape(target), escape(label));
+    }
+    let _ = writeln!(out, "{indent}</ul></aside>");
 }
 
 type Group<'a> = HashMap<Option<aidoc_model::id::NodeId>, Vec<&'a Node>>;
@@ -384,6 +407,7 @@ fn emit_node(
             );
         }
     }
+    emit_relations(out, node, all, relations, depth);
 }
 
 fn emit_children(
@@ -399,7 +423,6 @@ fn emit_children(
             emit_node(out, c, by_parent, _all, relations, depth);
         }
     }
-    let _ = relations; // reserved for future "see also" rendering
 }
 
 fn escape(s: &str) -> String {
@@ -420,7 +443,7 @@ fn escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aidoc_model::{Document, Node, id::NodeId};
+    use aidoc_model::{Document, Node, RelationKind, id::NodeId};
 
     fn make_node(id: &str, kind: NodeKind, content: &str) -> Node {
         let mut n = Node::new(NodeId::from_validated(id), kind);
@@ -472,5 +495,18 @@ mod tests {
         let html = render_html(&doc, &[root], &[], None);
         // The root section IS rendered as <h1>, but it must NOT also be a TOC entry.
         assert!(html.contains("href=\"#root\"") == false, "root leaked into TOC");
+    }
+
+    #[test]
+    fn renders_incoming_and_outgoing_relations_as_links() {
+        let doc = Document::new("d1", "Doc", NodeId::from_validated("root"));
+        let root = make_node("root", NodeKind::Section, "Doc");
+        let mut target = make_node("target", NodeKind::Paragraph, "Target title");
+        target.parent = Some(root.id.clone());
+        let relation = Relation { id: "rel-1".into(), source: root.id.clone(), target: target.id.clone(), kind: RelationKind::DependsOn, custom_kind: None };
+        let html = render_html(&doc, &[root.clone(), target], &[relation], None);
+        assert!(html.contains("→ depends-on"));
+        assert!(html.contains("← depends-on"));
+        assert!(html.contains("href=\"#target\">Target title</a>"));
     }
 }

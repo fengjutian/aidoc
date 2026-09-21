@@ -13,8 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use aidoc::{
     Document, Node, NodeId, OpId, Operation, OperationType, Patch, Provenance, Revision,
-    RevisionId, apply_operation, create_package, export_html as core_export_html, open_package,
-    revert_to, save_package,
+    RevisionId, apply_operation, create_package, open_package, revert_to, save_package,
 };
 use aidoc_storage::{Store, crud};
 
@@ -259,9 +258,13 @@ async fn export_html(state: Arc<ServerState>) -> Result<String, String> {
         let doc = crud::get_document(s.store.conn(), doc_id)
             .str_err()?
             .ok_or_else(|| "document row missing".to_string())?;
-        let nodes = crud::list_nodes(s.store.conn(), doc_id).str_err()?;
+        let mut nodes = crud::list_nodes(s.store.conn(), doc_id).str_err()?;
+        aidoc::inline_image_assets(&s.package, &mut nodes).str_err()?;
+        let relations = crud::list_relations(s.store.conn(), doc_id).str_err()?;
         let branch = crud::head_branch(s.store.conn(), doc_id).str_err()?;
-        Ok(core_export_html(&doc, &nodes, branch.as_deref()))
+        Ok(aidoc::exporter::export(aidoc::ExportFormat::Html, &aidoc::ExportInput {
+            doc: &doc, nodes: &nodes, relations: &relations, branch: branch.as_deref(),
+        }))
     })
 }
 

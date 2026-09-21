@@ -87,7 +87,7 @@ impl Exporter for MarkdownExporter {
         ExportFormat::Markdown
     }
     fn export(&self, input: &ExportInput) -> String {
-        render_markdown(input.doc, input.nodes)
+        render_markdown(input.doc, input.nodes, input.relations)
     }
 }
 
@@ -130,7 +130,7 @@ pub fn export_markdown(doc: &Document, nodes: &[Node]) -> String {
     )
 }
 
-fn render_markdown(doc: &Document, nodes: &[Node]) -> String {
+fn render_markdown(doc: &Document, nodes: &[Node], relations: &[Relation]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "# {}\n", doc.title);
     let by_parent = group_by_parent(nodes);
@@ -141,7 +141,7 @@ fn render_markdown(doc: &Document, nodes: &[Node]) -> String {
             .find(|n| n.id == root_id)
             .or_else(|| roots.first());
         if let Some(root) = top {
-            emit_md(&mut out, root, &by_parent, 1);
+            emit_md(&mut out, root, &by_parent, nodes, relations, 1);
         }
     }
     out
@@ -160,7 +160,7 @@ fn group_by_parent(nodes: &[Node]) -> Group<'_> {
     m
 }
 
-fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
+fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, all: &[Node], relations: &[Relation], depth: usize) {
     let hashes = "#".repeat((depth + 1).min(6));
     let content = node.content.trim();
     match node.kind {
@@ -237,9 +237,25 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
         }
     }
 
+    let relevant: Vec<_> = relations.iter().filter_map(|rel| {
+        let (arrow, other) = if rel.source == node.id { ("→", &rel.target) }
+            else if rel.target == node.id { ("←", &rel.source) } else { return None; };
+        let kind = rel.custom_kind.as_deref().filter(|_| rel.kind.as_str() == "custom").unwrap_or(rel.kind.as_str());
+        let label = all.iter().find(|n| n.id == *other).map(|n| n.content.trim())
+            .filter(|s| !s.is_empty()).unwrap_or(other.as_str());
+        Some((arrow, kind, other.as_str(), label))
+    }).collect();
+    if !relevant.is_empty() {
+        let _ = writeln!(out, "**Relations**");
+        for (arrow, kind, target, label) in relevant {
+            let _ = writeln!(out, "- {arrow} `{kind}` [{label}](#{target})");
+        }
+        out.push('\n');
+    }
+
     if let Some(children) = by_parent.get(&Some(node.id.clone())) {
         for c in children {
-            emit_md(out, c, by_parent, depth + 1);
+            emit_md(out, c, by_parent, all, relations, depth + 1);
         }
     }
 }
@@ -247,6 +263,7 @@ fn emit_md(out: &mut String, node: &Node, by_parent: &Group<'_>, depth: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aidoc_model::RelationKind;
     use aidoc_model::id::NodeId;
 
     #[test]
@@ -283,5 +300,19 @@ mod tests {
             export(ExportFormat::Markdown, &input),
             export_markdown(&doc, &[])
         );
+    }
+
+    #[test]
+    fn markdown_export_includes_relation_links() {
+        let doc = Document::new("d1", "Doc", NodeId::from_validated("root"));
+        let mut root = Node::new(NodeId::from_validated("root"), NodeKind::Section);
+        root.content = "Doc".into();
+        let mut target = Node::new(NodeId::from_validated("target"), NodeKind::Paragraph);
+        target.content = "Target".into();
+        target.parent = Some(root.id.clone());
+        let relation = Relation { id: "r".into(), source: root.id.clone(), target: target.id.clone(), kind: RelationKind::References, custom_kind: None };
+        let out = export(ExportFormat::Markdown, &ExportInput { doc: &doc, nodes: &[root, target], relations: &[relation], branch: None });
+        assert!(out.contains("→ `references` [Target](#target)"));
+        assert!(out.contains("← `references` [Doc](#root)"));
     }
 }
