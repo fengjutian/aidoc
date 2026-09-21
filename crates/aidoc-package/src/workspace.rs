@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use aidoc_storage::Store;
+use aidoc_model::{Node, NodeKind};
 
 use crate::manifest::Manifest;
 use crate::zip_io;
@@ -151,5 +152,52 @@ pub struct Package {
 impl Package {
     pub fn workspace_path(&self) -> &Path {
         self.workspace.path()
+    }
+}
+
+/// Replace package-relative image sources with data URLs in an export-only
+/// node copy. Live nodes keep their compact `assets/...` references.
+pub fn inline_image_assets(pkg: &Package, nodes: &mut [Node]) -> Result<(), PackageError> {
+    for node in nodes.iter_mut().filter(|n| n.kind == NodeKind::Image) {
+        let source = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
+        if !source.starts_with("assets/") || source.contains("..") { continue; }
+        let path = pkg.workspace_path().join(&source);
+        let mime = match path.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+            "png" => "image/png", "jpg" | "jpeg" => "image/jpeg", "gif" => "image/gif",
+            "webp" => "image/webp", "svg" => "image/svg+xml", "bmp" => "image/bmp",
+            other => return Err(PackageError::InvalidManifest(format!("unsupported image extension: {other}"))),
+        };
+        let bytes = std::fs::read(path)?;
+        const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
+        for chunk in bytes.chunks(3) {
+            let n = ((chunk[0] as u32) << 16) | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8) | chunk.get(2).copied().unwrap_or(0) as u32;
+            encoded.push(TABLE[((n >> 18) & 63) as usize] as char);
+            encoded.push(TABLE[((n >> 12) & 63) as usize] as char);
+            encoded.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+            encoded.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+        }
+        let data_url = format!("data:{mime};base64,{encoded}");
+        node.content = data_url.clone();
+        node.attributes.insert("src".into(), data_url);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+    use aidoc_model::{NodeId, NodeKind};
+
+    #[test]
+    fn export_copy_inlines_packaged_image_without_mutating_package() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pkg, _store) = create_package(dir.path().join("x.aidoc"), "x", "X").unwrap();
+        std::fs::write(pkg.workspace_path().join("assets/p.png"), b"foo").unwrap();
+        let mut image = Node::new(NodeId::from_validated("image"), NodeKind::Image);
+        image.content = "assets/p.png".into();
+        inline_image_assets(&pkg, std::slice::from_mut(&mut image)).unwrap();
+        assert_eq!(image.content, "data:image/png;base64,Zm9v");
+        assert!(pkg.workspace_path().join("assets/p.png").exists());
     }
 }

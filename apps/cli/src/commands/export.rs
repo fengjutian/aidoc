@@ -15,7 +15,8 @@ pub fn run(path: &str, out: &str, format: &str) -> Result<()> {
     let doc_id = m.document.id.clone();
     let doc = crud::get_document(s.store.conn(), &doc_id)?
         .ok_or_else(|| anyhow!("document {doc_id} missing"))?;
-    let nodes = crud::list_nodes(s.store.conn(), &doc_id)?;
+    let mut nodes = crud::list_nodes(s.store.conn(), &doc_id)?;
+    aidoc::inline_image_assets(s.package.as_ref().unwrap(), &mut nodes)?;
     let rels = crud::list_relations(s.store.conn(), &doc_id)?;
     let branch = crud::head_branch(s.store.conn(), &doc_id)?;
 

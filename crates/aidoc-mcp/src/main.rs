@@ -130,7 +130,8 @@ async fn save_aidoc(state: Arc<ServerState>) -> Result<String, String> {
 
 async fn list_nodes(state: Arc<ServerState>) -> Result<Vec<NodeDto>, String> {
     with_doc(&state, |s, doc_id| {
-        let nodes = crud::list_nodes(s.store.conn(), doc_id).str_err()?;
+        let mut nodes = crud::list_nodes(s.store.conn(), doc_id).str_err()?;
+        aidoc::inline_image_assets(&s.package, &mut nodes).str_err()?;
         Ok(nodes.into_iter().map(node_to_dto).collect())
     })
 }

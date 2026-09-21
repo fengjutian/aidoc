@@ -942,7 +942,7 @@ fn export_html(state: tauri::State<'_, AppState>) -> Result<String, String> {
         .map_err(err)?
         .ok_or_else(|| err("doc missing"))?;
     let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
-    inline_package_images(s, &mut nodes)?;
+    aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
     let branch = crud::head_branch(s.store.conn(), &doc_id).map_err(err)?;
     Ok(aidoc::exporter::export_html(
         &doc,
@@ -960,20 +960,8 @@ fn export_markdown(state: tauri::State<'_, AppState>) -> Result<String, String> 
         .map_err(err)?
         .ok_or_else(|| err("doc missing"))?;
     let mut nodes = crud::list_nodes(s.store.conn(), &doc_id).map_err(err)?;
-    inline_package_images(s, &mut nodes)?;
+    aidoc::inline_image_assets(&s.package, &mut nodes).map_err(err)?;
     Ok(aidoc::exporter::export_markdown(&doc, &nodes))
-}
-
-fn inline_package_images(session: &SessionHandle, nodes: &mut [Node]) -> Result<(), String> {
-    for node in nodes.iter_mut().filter(|n| n.kind == NodeKind::Image) {
-        let source = node.attributes.get("src").cloned().unwrap_or_else(|| node.content.clone());
-        if source.starts_with("assets/") && !source.contains("..") {
-            let data_url = asset_data_url(&session.package.workspace_path().join(&source))?;
-            node.content = data_url.clone();
-            node.attributes.insert("src".into(), data_url);
-        }
-    }
-    Ok(())
 }
 
 #[tauri::command]
@@ -1379,6 +1367,29 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base64_encoding_matches_rfc4648_examples() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+    }
+
+    #[test]
+    fn packaged_image_survives_save_and_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("asset-test.aidoc");
+        let (mut package, store) = create_package(&target, "assets", "Assets").unwrap();
+        let relative = std::path::Path::new("assets/pixel.png");
+        let bytes = b"not-a-real-png-but-roundtrips";
+        std::fs::write(package.workspace_path().join(relative), bytes).unwrap();
+        save_package(&mut package, &store).unwrap();
+        drop(package);
+        drop(store);
+        let (reopened, _store) = open_package(&target).unwrap();
+        assert_eq!(std::fs::read(reopened.workspace_path().join(relative)).unwrap(), bytes);
+    }
 
     #[test]
     fn workspace_keeps_independent_sessions_when_switching_and_closing() {
