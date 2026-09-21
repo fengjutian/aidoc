@@ -121,6 +121,8 @@ pub fn revert_to(
             true,
         )?;
 
+        crud::save_snapshot(tx, doc_id, new_rev.as_str(), &target_nodes)?;
+
         Ok::<(), RevertError>(())
     })?;
 

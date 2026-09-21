@@ -1028,6 +1028,7 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
             }
         }
     }
+    main_head = aidoc::branch_head(&s.store, &doc_id, "main").ok();
     let mut out = vec![BranchDto {
         name: "main".into(),
         head: main_head,
@@ -1036,10 +1037,10 @@ fn list_branches(state: tauri::State<'_, AppState>) -> Result<Vec<BranchDto>, St
     let mut names: Vec<&String> = named.keys().collect();
     names.sort_unstable();
     for name in names {
-        let (head, count) = &named[name];
+        let (_, count) = &named[name];
         out.push(BranchDto {
             name: name.clone(),
-            head: head.clone(),
+            head: aidoc::branch_head(&s.store, &doc_id, name).ok(),
             revisions: *count,
         });
     }
