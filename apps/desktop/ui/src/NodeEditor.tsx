@@ -92,7 +92,7 @@ interface Props {
  */
 export function NodeEditor({ kind, content, onChange, onKindChange, attributes, onAttributesChange }: Props) {
   if (kind === "diagram") {
-    return <DiagramView source={content} onChange={onChange} editable />;
+    return <DiagramView source={content} onChange={onChange} onConvertToText={() => onKindChange?.("paragraph")} editable />;
   }
   if (kind === "image") {
     return <ImageEditor content={content} onChange={onChange} />;
@@ -234,8 +234,6 @@ const FAVORITE_KINDS: Kind[] = [
   "blockquote",
   "code",
   "list",
-  "image",
-  "diagram",
 ];
 
 /**
@@ -308,7 +306,12 @@ function KindPicker({
                   {items.map((k) => (
                     <DropdownMenuItem
                       key={k.id}
-                      onSelect={() => onChange(k.id)}
+                      onSelect={() => {
+                        const special = ["diagram", "image", "code-ref"].includes(k.id);
+                        if (!special || window.confirm(`将当前节点转换为 ${k.label}？现有内容会按该类型解析。`)) {
+                          onChange(k.id);
+                        }
+                      }}
                       className={cn(
                         k.id === kind && "font-semibold text-primary",
                       )}
