@@ -14,6 +14,7 @@
   "welcome.subtitle": "当前未打开文档。新建一个 {ext} 或打开已有文档。",
   "welcome.newDoc": "新建文档…",
   "welcome.openFile": "打开文件…",
+  "welcome.importJson": "导入规范化 JSON…",
   "welcome.recent": "最近",
   "sidebar.nodes": "节点",
   "sidebar.addNode": "新建章节节点",

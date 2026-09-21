@@ -168,6 +168,18 @@ enum Cmd {
         #[arg(long)]
         reason: Option<String>,
     },
+
+    /// Create a brand-new `.aidoc` from a v0.2 canonical document JSON.
+    ///
+    /// `aidoc import-json out.aidoc in.json` validates `in.json` against
+    /// `document.schema.json`, then writes a fresh package at `out.aidoc`.
+    /// Unknown node kinds round-trip via `semantic_type`.
+    ImportJson {
+        /// Destination `.aidoc` path.
+        out: String,
+        /// Source canonical JSON path.
+        json: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -221,6 +233,7 @@ fn main() -> Result<()> {
             branch,
             reason,
         } => commands::merge::run(&path, &branch, reason.as_deref()),
+        Cmd::ImportJson { out, json } => commands::import::run(&out, &json),
     };
 
     // `validate` wants to communicate the error count via the process exit

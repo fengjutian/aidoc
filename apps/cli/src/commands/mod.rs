@@ -6,6 +6,7 @@ pub mod diff;
 pub mod example;
 pub mod export;
 pub mod history;
+pub mod import;
 pub mod info;
 pub mod init;
 pub mod merge;

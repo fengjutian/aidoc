@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertCircle,
   Clock,
@@ -458,7 +457,6 @@ export default function App() {
 
   const onImportJson = async () => {
     setError(null);
-    // Pick the canonical document.json first.
     const jsonPath = await openDialog({
       multiple: false,
       filters: [
@@ -467,20 +465,8 @@ export default function App() {
       ],
     });
     if (!jsonPath || Array.isArray(jsonPath)) return;
-    // Peek the JSON so we can suggest a sensible .aidoc filename.
-    let suggested = "imported.aidoc";
-    try {
-      const text = await readTextFile(jsonPath as string);
-      const parsed = JSON.parse(text);
-      const id = parsed?.document?.id;
-      if (typeof id === "string" && id.length > 0) {
-        suggested = `${id}.aidoc`;
-      }
-    } catch {
-      // Leave the suggested name; the backend will surface a clear error.
-    }
     const outPath = await saveDialog({
-      defaultPath: suggested,
+      defaultPath: "imported.aidoc",
       filters: [{ name: "AIDoc package", extensions: ["aidoc"] }],
     });
     if (!outPath) return;
